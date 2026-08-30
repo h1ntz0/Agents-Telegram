@@ -120,9 +120,10 @@ async def run_agent_daemon(env_path: str = ".env") -> None:
     signal.signal(signal.SIGINT, handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)
 
-    # Verify bot identity
+    # Verify bot identity and register menu command suggestions
     try:
         me = await telegram.get_me()
+        await telegram.set_my_commands()
         print("\n" + "╭" + "─" * 46 + "╮")
         print(f"│ Telegram Agent Online: @{me.username:<20} │")
         print(f"│ AI Provider:           {config.ai.provider.upper():<20} │")

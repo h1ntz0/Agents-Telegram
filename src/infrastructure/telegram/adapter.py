@@ -10,6 +10,21 @@ from src.infrastructure.telegram.formatter import split_message_chunks
 logger = logging.getLogger(__name__)
 
 
+DEFAULT_BOT_COMMANDS: List[Dict[str, str]] = [
+    {"command": "start", "description": "Mulai & info bot"},
+    {"command": "model", "description": "Lihat atau ganti model AI aktif"},
+    {"command": "agent", "description": "Ganti sub-agent persona (coder/qa/researcher)"},
+    {"command": "sdlc", "description": "Jalankan 4 tahap SDLC otomatis"},
+    {"command": "status", "description": "Status kesehatan & tools sistem"},
+    {"command": "settings", "description": "Lihat pengaturan & model aktif"},
+    {"command": "tools", "description": "Daftar tools yang tersedia"},
+    {"command": "memory", "description": "Lihat memori tersimpan"},
+    {"command": "reset", "description": "Bersihkan riwayat percakapan"},
+    {"command": "cancel", "description": "Batalkan aksi pending"},
+    {"command": "help", "description": "Panduan lengkap perintah bot"},
+]
+
+
 class TelegramAdapter:
     """Async client interfacing with the official Telegram Bot API."""
 
@@ -20,6 +35,18 @@ class TelegramAdapter:
         self._is_running = False
         self._last_update_id = 0
         self._client: Optional[httpx.AsyncClient] = None
+
+    async def set_my_commands(self, commands: Optional[List[Dict[str, str]]] = None) -> bool:
+        """Register slash commands with Telegram so users get autocomplete and menu popup."""
+        url = f"{self.base_url}/setMyCommands"
+        payload = {"commands": commands or DEFAULT_BOT_COMMANDS}
+        client = await self._get_client()
+        try:
+            res = await client.post(url, json=payload)
+            return res.status_code == 200 and res.json().get("ok", False)
+        except Exception as e:
+            logger.error(f"Failed to register Telegram bot commands: {str(e)}")
+            return False
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:

@@ -355,6 +355,14 @@ class SetupWizard:
         self.config_manager.save_env_file(env_dict)
         print(f"✓ Konfigurasi tersimpan di {self.env_path} (Permissions: 0600)")
 
+        # Register Telegram bot commands for autocomplete & menu button
+        try:
+            adapter = TelegramAdapter(bot_token=env_dict.get("TELEGRAM_BOT_TOKEN", ""))
+            await adapter.set_my_commands()
+            print("✓ Shortcut menu & autocomplete perintah Telegram berhasil didaftarkan.")
+        except Exception:
+            pass
+
         # Verify .gitignore
         self._ensure_gitignore()
 
