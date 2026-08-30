@@ -16,7 +16,7 @@ async def test_setup_wizard_e2e(tmp_path):
     inputs = [
         "1001, 1002",         # Allowed Telegram users
         "3",                  # Provider choice (3 = anthropic)
-        "claude-3-5-sonnet",  # Model
+        "1",                  # Model choice menu (1 = claude-3-5-sonnet-20241022)
         "My Bot",             # Agent Name
         "Direct & Helpful",   # Personality
         "Helpful prompt",     # System Prompt
@@ -44,4 +44,5 @@ async def test_setup_wizard_e2e(tmp_path):
 
         assert "AI_PROVIDER=anthropic" in content
         assert "AGENT_NAME=My Bot" in content
+        assert "AI_MODEL=claude-3-5-sonnet-20241022" in content
         assert "TELEGRAM_BOT_TOKEN=1234567890:ValidMockToken1234567890123456" in content

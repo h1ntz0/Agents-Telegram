@@ -1,14 +1,71 @@
-"""Interactive Setup Wizard with live API verification, progressive disclosure, and robust input validation."""
+"""Interactive Setup Wizard with live API verification, progressive disclosure, and menu-based model selection."""
 
 import getpass
 import os
 import platform
 import shutil
 import sys
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from src.application.config_manager import ConfigManager, RootConfig
 from src.infrastructure.ai.factory import create_ai_provider
 from src.infrastructure.telegram.adapter import TelegramAdapter
+
+PROVIDER_MODEL_MENUS: Dict[str, List[str]] = {
+    "9router": [
+        "claude-3-5-sonnet-20241022",
+        "claude-3-7-sonnet-20250219",
+        "deepseek-chat",
+        "deepseek-reasoner",
+        "gpt-4o",
+        "gemini-2.0-flash",
+        "Ketik nama model manual (Custom)"
+    ],
+    "deepseek": [
+        "deepseek-chat",
+        "deepseek-reasoner",
+        "deepseek-coder",
+        "Ketik nama model manual (Custom)"
+    ],
+    "anthropic": [
+        "claude-3-5-sonnet-20241022",
+        "claude-3-7-sonnet-20250219",
+        "claude-3-5-haiku-20241022",
+        "claude-3-opus-20240229",
+        "Ketik nama model manual (Custom)"
+    ],
+    "google": [
+        "gemini-2.0-flash",
+        "gemini-1.5-pro",
+        "gemini-1.5-flash",
+        "Ketik nama model manual (Custom)"
+    ],
+    "openai": [
+        "gpt-4o",
+        "gpt-4o-mini",
+        "o1",
+        "o3-mini",
+        "Ketik nama model manual (Custom)"
+    ],
+    "openrouter": [
+        "anthropic/claude-3.5-sonnet",
+        "deepseek/deepseek-r1",
+        "deepseek/deepseek-chat",
+        "openai/gpt-4o",
+        "google/gemini-2.0-flash-001",
+        "meta-llama/llama-3.3-70b-instruct",
+        "Ketik nama model manual (Custom)"
+    ],
+    "ollama": [
+        "llama3.2",
+        "deepseek-r1",
+        "qwen2.5-coder",
+        "mistral",
+        "Ketik nama model manual (Custom)"
+    ],
+    "custom": [
+        "Ketik nama model manual (Custom)"
+    ]
+}
 
 
 class SetupWizard:
@@ -33,7 +90,6 @@ class SetupWizard:
         while True:
             raw = self._prompt(question, str(default))
             try:
-                # If user typed 'y' or non-digit accidentally, fallback to default if empty or prompt again
                 clean = raw.strip()
                 if clean.lower() in ("y", "yes", "ok"):
                     return default
@@ -153,23 +209,12 @@ class SetupWizard:
         allowed_users = self._prompt("Allowed Telegram User IDs (pisahkan dengan koma jika banyak, kosongkan untuk akses terbuka)", default_allowed)
         env_dict["TELEGRAM_ALLOWED_USERS"] = allowed_users
 
-        # Step 3: AI Provider Configuration & Live Validation
+        # Step 3: AI Provider Configuration & Menu-based Model Selection
         print("\nStep [3/6] AI Provider Configuration")
         providers = ["9router", "deepseek", "anthropic", "google", "openai", "openrouter", "ollama", "custom"]
         cur_prov = existing_cfg.ai.provider if existing_cfg and existing_cfg.ai.provider in providers else "9router"
         provider = self._prompt_choice("Pilih AI Provider", providers, default_idx=providers.index(cur_prov))
         env_dict["AI_PROVIDER"] = provider
-
-        default_model_map = {
-            "9router": "claude-3-5-sonnet-20241022",
-            "deepseek": "deepseek-chat",
-            "anthropic": "claude-3-5-sonnet-20241022",
-            "google": "gemini-2.0-flash",
-            "openai": "gpt-4o",
-            "openrouter": "anthropic/claude-3.5-sonnet",
-            "ollama": "llama3.2",
-            "custom": "custom-model"
-        }
 
         base_url = ""
         if provider == "9router":
@@ -190,18 +235,30 @@ class SetupWizard:
                 api_key = self._prompt_secret(f"{provider.upper()} API Key", default_key)
                 env_dict["AI_API_KEY"] = api_key
             elif provider == "9router":
-                default_key = existing_cfg.ai.api_key if existing_cfg else "9router-local"
-                api_key = self._prompt("9router API Key (opsional untuk gateway lokal)", default_key)
+                default_key = existing_cfg.ai.api_key if existing_cfg else "sk-REVOKED-NINE-ROUTER-KEY-0002"
+                api_key = self._prompt("9router API Key (opsional / password untuk gateway)", default_key)
                 env_dict["AI_API_KEY"] = api_key
             else:
                 api_key = ""
                 env_dict["AI_API_KEY"] = ""
 
-            default_model = existing_cfg.ai.model if existing_cfg else default_model_map.get(provider, "gpt-4o")
-            model = self._prompt("Nama Model (contoh: deepseek-chat, deepseek-reasoner, gpt-4o, claude-3-5-sonnet-20241022)", default_model)
+            # Model Selection Menu
+            model_options = PROVIDER_MODEL_MENUS.get(provider, ["Ketik nama model manual (Custom)"])
+            default_model = existing_cfg.ai.model if existing_cfg else model_options[0]
+            default_idx = 0
+            if default_model in model_options:
+                default_idx = model_options.index(default_model)
+
+            selected_model_option = self._prompt_choice(f"Pilih Model AI untuk {provider.upper()}", model_options, default_idx=default_idx)
+
+            if selected_model_option == "Ketik nama model manual (Custom)":
+                model = self._prompt("Ketik nama model custom", default_model)
+            else:
+                model = selected_model_option
+
             env_dict["AI_MODEL"] = model
 
-            print(f"→ Menguji kredensial ke {provider.upper()}...")
+            print(f"→ Menguji kredensial ke {provider.upper()} ({model})...")
             try:
                 prov_inst = create_ai_provider(provider_name=provider, api_key=api_key, model=model, base_url=base_url)
                 valid = await prov_inst.validate_credentials()
