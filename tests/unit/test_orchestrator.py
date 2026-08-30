@@ -125,3 +125,41 @@ async def test_destructive_tool_triggers_confirmation(temp_db, mock_config):
     assert "high-risk operation" in sent["text"]
     assert sent["reply_markup"] is not None
     assert "inline_keyboard" in sent["reply_markup"]
+
+
+@pytest.mark.asyncio
+async def test_switch_model_command_and_callback(temp_db, mock_config):
+    mock_tg = MockTelegramAdapter()
+    mock_ai = MockAIProvider(fixed_response="Model test")
+    tools = ToolRegistry()
+    auth_policy = AuthPolicy(allowlist_enabled=False)
+    auth_mgr = TelegramAuthManager(policy=auth_policy)
+    limiter = UserRateLimiter()
+
+    orchestrator = AgentOrchestrator(
+        config=mock_config,
+        telegram_adapter=mock_tg,
+        ai_provider=mock_ai,
+        db=temp_db,
+        tool_registry=tools,
+        auth_manager=auth_mgr,
+        rate_limiter=limiter,
+    )
+
+    # Test /model without args -> shows keyboard
+    await orchestrator.handle_message({
+        "text": "/model",
+        "chat": {"id": 111, "type": "private"},
+        "from": {"id": 111, "username": "user1"}
+    })
+    assert len(mock_tg.sent_messages) == 1
+    assert "inline_keyboard" in mock_tg.sent_messages[0]["reply_markup"]
+
+    # Test /model with args -> switches model immediately
+    await orchestrator.handle_message({
+        "text": "/model ag/gemini-3.7-flash-high",
+        "chat": {"id": 111, "type": "private"},
+        "from": {"id": 111, "username": "user1"}
+    })
+    assert "switched to: ag/gemini-3.7-flash-high" in mock_tg.sent_messages[1]["text"]
+    assert orchestrator._user_active_model[111] == "ag/gemini-3.7-flash-high"

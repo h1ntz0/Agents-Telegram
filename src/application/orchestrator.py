@@ -1,10 +1,10 @@
-"""Central Agent Orchestrator handling message routing, ReAct loop, multi-agent SDLC delegation, and Humanizer output."""
+"""Central Agent Orchestrator handling message routing, ReAct loop, dynamic model switching, and Multi-Agent SDLC."""
 
 import asyncio
 import json
 import logging
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from src.application.config_manager import RootConfig
 from src.application.multiagent_sdlc import MultiAgentSDLC
 from src.domain.agent import AgentState, Message, PendingConfirmation, Role, Session, ToolCall, ToolResponse
@@ -25,9 +25,19 @@ SUBAGENT_PERSONAS = {
     "qa": "You are the QA & Security Agent. Check for boundary conditions, security vulnerabilities, and verify test assertions.",
 }
 
+QUICK_MODELS = [
+    "ag/gemini-3.7-flash-high",
+    "ag/claude-3.7-sonnet",
+    "deepseek-chat",
+    "deepseek-reasoner",
+    "gpt-4o",
+    "claude-3-5-sonnet-20241022",
+    "gemini-2.0-flash",
+]
+
 
 class AgentOrchestrator:
-    """Orchestrates agent execution flow between Telegram, AI provider, tools, SQLite persistence, and Multi-Agent SDLC."""
+    """Orchestrates agent execution flow between Telegram, AI provider, tools, SQLite persistence, and dynamic runtime model selection."""
 
     def __init__(
         self,
@@ -49,6 +59,7 @@ class AgentOrchestrator:
         self.sdlc = MultiAgentSDLC(ai_provider=ai_provider, tool_registry=tool_registry)
         self._pending_actions: Dict[str, PendingConfirmation] = {}
         self._user_active_persona: Dict[int, str] = {}
+        self._user_active_model: Dict[int, str] = {}
 
     async def handle_message(self, message_data: Dict[str, Any]) -> None:
         """Process incoming Telegram message."""
@@ -84,36 +95,63 @@ class AgentOrchestrator:
         await self._process_user_prompt(chat_id, user_id, text)
 
     async def _handle_command(self, chat_id: int, user_id: int, command_text: str) -> None:
-        """Route standard Telegram slash commands and multi-agent workflows."""
+        """Route standard Telegram slash commands, dynamic model switching, and SDLC."""
         parts = command_text.split(maxsplit=1)
         cmd = parts[0].lower()
         args = parts[1].strip() if len(parts) > 1 else ""
+
+        active_model = self._user_active_model.get(user_id, self.config.ai.model)
+        active_persona = self._user_active_persona.get(user_id, "orchestrator")
 
         if cmd == "/start":
             msg = (
                 f"Hello! I am {self.config.agent.name}.\n\n"
                 f"Status: Online\n"
-                f"Provider: {self.config.ai.provider.upper()} ({self.config.ai.model})\n"
-                f"Active Agent Persona: {self._user_active_persona.get(user_id, 'orchestrator').upper()}\n\n"
-                "Send me any task or question. Type /help to view available commands."
+                f"Provider: {self.config.ai.provider.upper()}\n"
+                f"Active Model: {active_model}\n"
+                f"Active Persona: {active_persona.upper()}\n\n"
+                "Commands:\n"
+                "/model - Change active AI model\n"
+                "/agent - Switch sub-agent persona\n"
+                "/sdlc <task> - Run full 4-stage SDLC\n"
+                "/help - View all commands"
             )
             await self.telegram.send_message(chat_id, msg)
 
         elif cmd == "/help":
             help_text = (
                 "Available Commands:\n"
-                "/start - Bot status and greeting\n"
-                "/help - Show this guide\n"
-                "/status - Runtime health, memory, and provider status\n"
+                "/model [name] - View or switch active AI model (e.g. /model ag/gemini-3.7-flash-high)\n"
                 "/agent [orchestrator|researcher|coder|qa] - Switch sub-agent persona\n"
-                "/sdlc <feature_description> - Run full Multi-Agent SDLC pipeline\n"
-                "/settings - Active AI model and agent persona\n"
-                "/tools - List enabled tools and permission levels\n"
-                "/memory - View stored memory entries for this session\n"
-                "/reset - Clear active conversation context\n"
-                "/cancel - Abort any pending action awaiting confirmation"
+                "/sdlc <task> - Execute multi-agent development lifecycle\n"
+                "/status - Runtime health and configuration overview\n"
+                "/settings - View current model and preferences\n"
+                "/tools - List active tools\n"
+                "/memory - View recorded memory\n"
+                "/reset - Clear conversation context\n"
+                "/cancel - Abort pending action"
             )
             await self.telegram.send_message(chat_id, help_text)
+
+        elif cmd == "/model":
+            if args:
+                self._user_active_model[user_id] = args
+                await self.telegram.send_message(chat_id, f"✓ Active model switched to: {args}")
+                return
+
+            # Render model picker keyboard
+            buttons: List[List[Dict[str, str]]] = []
+            for m in QUICK_MODELS:
+                buttons.append([{"text": f"Select {m}", "callback_data": f"set_model:{m}"}])
+
+            markup = {"inline_keyboard": buttons}
+            msg = (
+                f"Current Active Model: {active_model}\n\n"
+                "Click a model below or type:\n"
+                "  /model <model_name>\n"
+                "Example: /model ag/gemini-3.7-flash-high"
+            )
+            await self.telegram.send_message(chat_id, msg, reply_markup=markup)
 
         elif cmd == "/agent":
             if not args:
@@ -124,7 +162,7 @@ class AgentOrchestrator:
             target = args.lower()
             if target in SUBAGENT_PERSONAS:
                 self._user_active_persona[user_id] = target
-                await self.telegram.send_message(chat_id, f"Switched to {target.upper()} agent persona.")
+                await self.telegram.send_message(chat_id, f"✓ Switched to {target.upper()} agent persona.")
             else:
                 await self.telegram.send_message(chat_id, f"Unknown agent persona '{target}'. Options: {', '.join(SUBAGENT_PERSONAS.keys())}")
 
@@ -135,13 +173,12 @@ class AgentOrchestrator:
             await self._run_sdlc_flow(chat_id, user_id, args)
 
         elif cmd == "/status":
-            cur_persona = self._user_active_persona.get(user_id, "orchestrator")
             status_text = (
                 f"Agent Status: RUNNING\n"
                 f"Telegram: CONNECTED\n"
                 f"AI Provider: {self.config.ai.provider}\n"
-                f"Model: {self.config.ai.model}\n"
-                f"Active Persona: {cur_persona.upper()}\n"
+                f"Active Model: {active_model}\n"
+                f"Active Persona: {active_persona.upper()}\n"
                 f"Memory: {'Enabled' if self.config.storage.memory_enabled else 'Disabled'}\n"
                 f"Active Tools: {len(self.tools.list_definitions())}"
             )
@@ -153,7 +190,7 @@ class AgentOrchestrator:
                 f"- Name: {self.config.agent.name}\n"
                 f"- Personality: {self.config.agent.personality}\n"
                 f"- AI Provider: {self.config.ai.provider}\n"
-                f"- Model: {self.config.ai.model}\n"
+                f"- Model: {active_model}\n"
                 f"- Temperature: {self.config.ai.temperature}"
             )
             await self.telegram.send_message(chat_id, settings_text)
@@ -222,7 +259,7 @@ class AgentOrchestrator:
             await self.telegram.send_message(chat_id, f"Multi-Agent SDLC Error: {str(e)}")
 
     async def handle_callback_query(self, callback_data: Dict[str, Any]) -> None:
-        """Handle inline button clicks for destructive tool confirmations."""
+        """Handle inline button clicks for model selection and tool confirmations."""
         query_id = callback_data.get("id", "")
         data_str = callback_data.get("data", "")
         user = callback_data.get("from", {})
@@ -234,7 +271,13 @@ class AgentOrchestrator:
         if not user_id or not chat_id:
             return
 
-        if data_str.startswith("confirm:"):
+        if data_str.startswith("set_model:"):
+            new_model = data_str.split(":", 1)[1]
+            self._user_active_model[user_id] = new_model
+            await self.telegram.answer_callback_query(query_id, f"Model set to {new_model}")
+            await self.telegram.edit_message_text(chat_id, message_id, f"✓ Active model switched to: {new_model}")
+
+        elif data_str.startswith("confirm:"):
             action_id = data_str.split(":", 1)[1]
             pending = self._pending_actions.get(action_id)
 
@@ -259,7 +302,7 @@ class AgentOrchestrator:
             await self.telegram.edit_message_text(chat_id, message_id, "Operation was cancelled.")
 
     async def _process_user_prompt(self, chat_id: int, user_id: int, prompt_text: str) -> None:
-        """Execute ReAct loop with tool resolution, multi-turn persistence, and humanized output."""
+        """Execute ReAct loop with tool resolution, dynamic session model, and humanized output."""
         await self.telegram.send_chat_action(chat_id, "typing")
 
         session = await self.db.get_or_create_session(user_id, chat_id)
@@ -267,8 +310,9 @@ class AgentOrchestrator:
         session.add_message(user_message)
         await self.db.save_message(session.session_id, user_id, user_message)
 
-        # Get active subagent persona or default orchestrator
+        # Get active subagent persona and active model
         cur_persona = self._user_active_persona.get(user_id, "orchestrator")
+        cur_model = self._user_active_model.get(user_id, self.config.ai.model)
         persona_prompt = SUBAGENT_PERSONAS.get(cur_persona, self.config.agent.system_prompt)
 
         # Build dynamic system prompt with memory context
@@ -286,7 +330,7 @@ class AgentOrchestrator:
                 messages=session.messages,
                 system_prompt=sys_prompt,
                 tools=tool_defs,
-                model=self.config.ai.model,
+                model=cur_model,
                 temperature=self.config.ai.temperature,
                 max_tokens=self.config.ai.max_tokens,
             )

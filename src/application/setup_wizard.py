@@ -1,4 +1,4 @@
-"""Interactive Setup Wizard with live API verification, progressive disclosure, and menu-based model selection."""
+"""Interactive Setup Wizard with live API verification, progressive disclosure, and flexible model selection."""
 
 import getpass
 import os
@@ -12,6 +12,8 @@ from src.infrastructure.telegram.adapter import TelegramAdapter
 
 PROVIDER_MODEL_MENUS: Dict[str, List[str]] = {
     "9router": [
+        "ag/gemini-3.7-flash-high",
+        "ag/claude-3.7-sonnet",
         "claude-3-5-sonnet-20241022",
         "claude-3-7-sonnet-20250219",
         "deepseek-chat",
@@ -209,7 +211,7 @@ class SetupWizard:
         allowed_users = self._prompt("Allowed Telegram User IDs (pisahkan dengan koma jika banyak, kosongkan untuk akses terbuka)", default_allowed)
         env_dict["TELEGRAM_ALLOWED_USERS"] = allowed_users
 
-        # Step 3: AI Provider Configuration & Menu-based Model Selection
+        # Step 3: AI Provider Configuration & Flexible Model Selection
         print("\nStep [3/6] AI Provider Configuration")
         providers = ["9router", "deepseek", "anthropic", "google", "openai", "openrouter", "ollama", "custom"]
         cur_prov = existing_cfg.ai.provider if existing_cfg and existing_cfg.ai.provider in providers else "9router"
@@ -242,19 +244,30 @@ class SetupWizard:
                 api_key = ""
                 env_dict["AI_API_KEY"] = ""
 
-            # Model Selection Menu
+            # Model Selection (Accepts number OR direct model name typed by user)
             model_options = PROVIDER_MODEL_MENUS.get(provider, ["Ketik nama model manual (Custom)"])
             default_model = existing_cfg.ai.model if existing_cfg else model_options[0]
-            default_idx = 0
-            if default_model in model_options:
-                default_idx = model_options.index(default_model)
 
-            selected_model_option = self._prompt_choice(f"Pilih Model AI untuk {provider.upper()}", model_options, default_idx=default_idx)
+            print(f"\n? Pilih Model AI untuk {provider.upper()}:")
+            for i, opt in enumerate(model_options, 1):
+                marker = ">" if opt == default_model else " "
+                print(f"  {marker} {i}. {opt}")
 
-            if selected_model_option == "Ketik nama model manual (Custom)":
-                model = self._prompt("Ketik nama model custom", default_model)
+            raw_model_input = self._prompt(
+                f"Pilih nomor (1-{len(model_options)}) atau langsung ketik nama model",
+                "1"
+            )
+
+            # Check if user typed a number
+            if raw_model_input.isdigit() and 1 <= int(raw_model_input) <= len(model_options):
+                chosen_opt = model_options[int(raw_model_input) - 1]
+                if chosen_opt == "Ketik nama model manual (Custom)":
+                    model = self._prompt("Ketik nama model", default_model)
+                else:
+                    model = chosen_opt
             else:
-                model = selected_model_option
+                # User directly typed a model name like 'ag/gemini-3.7-flash-high'
+                model = raw_model_input.strip()
 
             env_dict["AI_MODEL"] = model
 
@@ -263,16 +276,16 @@ class SetupWizard:
                 prov_inst = create_ai_provider(provider_name=provider, api_key=api_key, model=model, base_url=base_url)
                 valid = await prov_inst.validate_credentials()
                 if valid:
-                    print(f"✓ Koneksi ke {provider.upper()} berhasil diverifikasi.")
+                    print(f"✓ Koneksi ke {provider.upper()} ({model}) berhasil diverifikasi.")
                     break
                 else:
                     print(f"✗ Peringatan: Gagal memvalidasi kredensial ke {provider.upper()}.")
-                    if not self._prompt_bool("Tetap gunakan konfigurasi ini dan lanjutkan?", default=True):
+                    if not self._prompt_bool("Tetap gunakan model ini dan lanjutkan?", default=True):
                         continue
                     break
             except Exception as e:
                 print(f"✗ Catatan verifikasi: {str(e)}")
-                if not self._prompt_bool("Tetap gunakan konfigurasi ini dan lanjutkan?", default=True):
+                if not self._prompt_bool("Tetap gunakan model ini dan lanjutkan?", default=True):
                     continue
                 break
 
@@ -352,7 +365,7 @@ class SetupWizard:
         print("    ./start\n")
         print("atau dengan Docker:\n")
         print("    docker compose up -d\n")
-        print("Buka Telegram lalu kirim /start atau /sdlc ke bot Anda.\n")
+        print("Buka Telegram lalu kirim /start, /model, atau /sdlc ke bot Anda.\n")
 
         return True
 
