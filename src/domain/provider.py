@@ -23,13 +23,13 @@ class ProviderType(str, Enum):
 PROVIDER_MODELS_CATALOG: Dict[str, List[str]] = {
     "9router": [
         "ag/gemini-3.7-flash-high",
-        "ag/claude-3.7-sonnet",
-        "claude-3-5-sonnet-20241022",
-        "claude-3-7-sonnet-20250219",
-        "deepseek-chat",
-        "deepseek-reasoner",
-        "gpt-4o",
-        "gemini-2.0-flash",
+        "ds/deepseek-v4-flash",
+        "ds/deepseek-chat",
+        "ds/deepseek-reasoner",
+        "ag/claude-sonnet-4-6",
+        "cx/gpt-5.6-sol",
+        "cx/gpt-5.4",
+        "ag/gpt-oss-120b-medium",
     ],
     "deepseek": [
         "deepseek-chat",

@@ -124,6 +124,7 @@ class AgentOrchestrator:
                 "/model - View or change active AI model\n"
                 "/agent - Switch sub-agent persona\n"
                 "/sdlc <task> - Run full 4-stage SDLC\n"
+                "/reset - Clear chat history context\n"
                 "/help - View all commands"
             )
             await self.telegram.send_message(chat_id, msg)
@@ -131,7 +132,7 @@ class AgentOrchestrator:
         elif cmd == "/help":
             help_text = (
                 "Available Commands:\n"
-                "/model [name] - View or switch active AI model (e.g. /model ag/gemini-3.7-flash-high)\n"
+                "/model [name] - View or switch active AI model (e.g. /model ds/deepseek-v4-flash)\n"
                 "/agent [orchestrator|researcher|coder|qa] - Switch sub-agent persona\n"
                 "/sdlc <task> - Execute multi-agent development lifecycle\n"
                 "/status - Runtime health and configuration overview\n"
@@ -146,7 +147,16 @@ class AgentOrchestrator:
         elif cmd == "/model":
             if args:
                 await self._set_user_model(user_id, args)
-                await self.telegram.send_message(chat_id, f"✓ Active model for {provider_name.upper()} switched to: {args}")
+                markup = {
+                    "inline_keyboard": [
+                        [{"text": "🧹 Clear History (/reset)", "callback_data": "reset_session"}]
+                    ]
+                }
+                await self.telegram.send_message(
+                    chat_id,
+                    f"✓ Active model for {provider_name.upper()} switched to: {args}\n\nTip: Gunakan /reset jika ingin mengosongkan riwayat percakapan dari model sebelumnya.",
+                    reply_markup=markup
+                )
                 return
 
             # Render provider-specific model picker keyboard
@@ -161,7 +171,7 @@ class AgentOrchestrator:
                 f"Current Model: {active_model}\n\n"
                 "Click a model button below or type:\n"
                 "  /model <model_name>\n"
-                "Contoh: /model ag/gemini-3.7-flash-high"
+                "Contoh: /model ds/deepseek-v4-flash"
             )
             await self.telegram.send_message(chat_id, msg, reply_markup=markup)
 
@@ -274,7 +284,7 @@ class AgentOrchestrator:
             await self.telegram.send_message(chat_id, f"Multi-Agent SDLC Error: {str(e)}")
 
     async def handle_callback_query(self, callback_data: Dict[str, Any]) -> None:
-        """Handle inline button clicks for model selection and tool confirmations."""
+        """Handle inline button clicks for model selection, tool confirmations, and resets."""
         query_id = callback_data.get("id", "")
         data_str = callback_data.get("data", "")
         user = callback_data.get("from", {})
@@ -290,7 +300,13 @@ class AgentOrchestrator:
             new_model = data_str.split(":", 1)[1]
             await self._set_user_model(user_id, new_model)
             await self.telegram.answer_callback_query(query_id, f"Model set to {new_model}")
-            await self.telegram.edit_message_text(chat_id, message_id, f"✓ Active model switched to: {new_model}")
+            await self.telegram.edit_message_text(chat_id, message_id, f"✓ Active model switched to: {new_model}\n(Kirim /reset jika ingin mengosongkan riwayat sesi model sebelumnya)")
+
+        elif data_str == "reset_session":
+            session_id = f"user_{user_id}_chat_{chat_id}"
+            await self.db.clear_session(session_id)
+            await self.telegram.answer_callback_query(query_id, "Riwayat percakapan dibersihkan.")
+            await self.telegram.edit_message_text(chat_id, message_id, "✓ Riwayat percakapan berhasil dibersihkan untuk model baru.")
 
         elif data_str.startswith("confirm:"):
             action_id = data_str.split(":", 1)[1]
@@ -330,9 +346,13 @@ class AgentOrchestrator:
         cur_model = await self._get_user_model(user_id)
         persona_prompt = SUBAGENT_PERSONAS.get(cur_persona, self.config.agent.system_prompt)
 
-        # Build dynamic system prompt with memory context
+        # Build dynamic system prompt with explicit active model engine context
         memories = await self.db.get_memories(user_id)
-        sys_prompt = f"{persona_prompt}\nTone: Direct, authentic, no robotic preambles."
+        sys_prompt = (
+            f"{persona_prompt}\n"
+            f"Active Model: {cur_model}\n"
+            f"Tone: Direct, authentic, no robotic preambles."
+        )
         if memories:
             clean_mems = [f"- {k}: {v}" for k, v in memories.items() if not k.startswith("_")]
             if clean_mems:
