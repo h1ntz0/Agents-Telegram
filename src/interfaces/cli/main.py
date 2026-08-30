@@ -73,7 +73,7 @@ async def run_agent_daemon(env_path: str = ".env") -> None:
     if config.tools.shell.enabled:
         tools.register(ShellTool(
             enabled=True,
-            timeout=config.tools.shell.timeout_seconds,
+            timeout=getattr(config.tools.shell, "timeout_seconds", 30.0),
             allow_destructive=config.tools.shell.allow_destructive
         ))
 
@@ -83,7 +83,7 @@ async def run_agent_daemon(env_path: str = ".env") -> None:
         api_key=config.ai.api_key,
         model=config.ai.model,
         base_url=config.ai.base_url,
-        timeout=config.ai.timeout_seconds,
+        timeout=getattr(config.ai, "timeout_seconds", 60.0),
     )
 
     # Initialize Telegram Adapter

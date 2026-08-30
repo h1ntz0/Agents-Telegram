@@ -33,6 +33,7 @@ class AISettings(BaseModel):
     base_url: str = ""
     temperature: float = 0.2
     max_tokens: int = 2048
+    timeout_seconds: float = 60.0
 
 
 class AgentSettings(BaseModel):
@@ -61,6 +62,7 @@ class FilesystemToolSettings(BaseModel):
 class ShellToolSettings(BaseModel):
     enabled: bool = False
     allow_destructive: bool = False
+    timeout_seconds: float = 30.0
 
 
 class ToolsSettings(BaseModel):
@@ -106,43 +108,42 @@ def parse_int_list(value: Optional[str]) -> List[int]:
 
 
 class ConfigManager:
-    """Loads and manages application configuration across YAML defaults, .env, and environment variables."""
+    """Loads, validates, masks, and persists configuration from YAML, env, and defaults."""
 
-    def __init__(self, env_path: str = ".env", default_yaml_path: str = "config/defaults/default.yaml"):
+    def __init__(self, env_path: str = ".env", config_path: str = "config/config.yaml"):
         self.env_path = env_path
-        self.default_yaml_path = default_yaml_path
+        self.config_path = config_path
 
     def load_config(self) -> RootConfig:
-        """Resolve and validate configuration by hierarchy."""
-        data: Dict[str, Any] = {}
+        """Load and resolve hierarchical configuration with precedence: Env Vars > .env > config.yaml > Defaults."""
+        # 1. Load YAML file if exists
+        yaml_data: Dict[str, Any] = {}
+        if os.path.exists(self.config_path):
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                yaml_data = yaml.safe_load(f) or {}
 
-        # 1. Load from default.yaml if exists
-        if os.path.exists(self.default_yaml_path):
-            try:
-                with open(self.default_yaml_path, "r", encoding="utf-8") as f:
-                    yaml_data = yaml.safe_load(f)
-                    if isinstance(yaml_data, dict):
-                        data.update(yaml_data)
-            except Exception:
-                pass
-
-        # 2. Load from .env file
+        # 2. Load .env file
         env_file_data: Dict[str, str] = {}
         if os.path.exists(self.env_path):
-            env_file_data = dotenv_values(self.env_path)
+            loaded = dotenv_values(self.env_path)
+            env_file_data = {k: v for k, v in loaded.items() if v is not None}
 
-        # Helper to get variable from OS environ > .env file
-        def get_val(key: str, default: Any = None) -> Any:
-            return os.environ.get(key, env_file_data.get(key, default))
+        # Helper to get value in precedence order
+        def get_val(env_key: str, default: Any = None) -> Any:
+            if env_key in os.environ:
+                return os.environ[env_key]
+            if env_key in env_file_data:
+                return env_file_data[env_key]
+            return default
 
-        # Build resolved dictionary
-        app_dict = data.get("app", {})
-        telegram_dict = data.get("telegram", {})
-        ai_dict = data.get("ai", {})
-        agent_dict = data.get("agent", {})
-        tools_dict = data.get("tools", {})
-        storage_dict = data.get("storage", {})
-        security_dict = data.get("security", {})
+        # Build settings with hierarchical fallbacks
+        app_dict = yaml_data.get("app", {})
+        telegram_dict = yaml_data.get("telegram", {})
+        ai_dict = yaml_data.get("ai", {})
+        agent_dict = yaml_data.get("agent", {})
+        tools_dict = yaml_data.get("tools", {})
+        storage_dict = yaml_data.get("storage", {})
+        sec_dict = yaml_data.get("security", {})
 
         app_cfg = AppSettings(
             env=get_val("APP_ENV", app_dict.get("env", "production")),
@@ -171,6 +172,7 @@ class ConfigManager:
             base_url=get_val("AI_BASE_URL", ai_dict.get("base_url", "")),
             temperature=float(get_val("AI_TEMPERATURE", ai_dict.get("temperature", 0.2))),
             max_tokens=int(get_val("AI_MAX_TOKENS", ai_dict.get("max_tokens", 2048))),
+            timeout_seconds=float(get_val("AI_TIMEOUT_SECONDS", ai_dict.get("timeout_seconds", 60.0))),
         )
 
         agent_cfg = AgentSettings(
@@ -196,6 +198,7 @@ class ConfigManager:
         shell_cfg = ShellToolSettings(
             enabled=str(get_val("ALLOW_SHELL", tools_dict.get("shell", {}).get("enabled", False))).lower() in ("true", "1", "yes"),
             allow_destructive=str(get_val("ALLOW_DESTRUCTIVE_SHELL", tools_dict.get("shell", {}).get("allow_destructive", False))).lower() in ("true", "1", "yes"),
+            timeout_seconds=float(get_val("SHELL_TIMEOUT_SECONDS", tools_dict.get("shell", {}).get("timeout_seconds", 30.0))),
         )
 
         tools_cfg = ToolsSettings(
@@ -208,14 +211,14 @@ class ConfigManager:
 
         storage_cfg = StorageSettings(
             memory_enabled=str(get_val("MEMORY_ENABLED", storage_dict.get("memory_enabled", True))).lower() in ("true", "1", "yes"),
-            provider=get_val("MEMORY_PROVIDER", storage_dict.get("provider", "sqlite")),
+            provider=get_val("STORAGE_PROVIDER", storage_dict.get("provider", "sqlite")),
             database_path=get_val("DATABASE_PATH", storage_dict.get("database_path", "data/agent.db")),
-            retention_days=int(get_val("MEMORY_RETENTION_DAYS", storage_dict.get("retention_days", 0))),
+            retention_days=int(get_val("DATA_RETENTION_DAYS", storage_dict.get("retention_days", 0))),
         )
 
-        security_cfg = SecuritySettings(
-            rate_limit_per_minute=int(get_val("RATE_LIMIT_REQUESTS_PER_MINUTE", security_dict.get("rate_limit_per_minute", 15))),
-            daily_budget_usd=float(get_val("DAILY_BUDGET_USD", security_dict.get("daily_budget_usd", 5.0))),
+        sec_cfg = SecuritySettings(
+            rate_limit_per_minute=int(get_val("RATE_LIMIT_REQUESTS_PER_MINUTE", sec_dict.get("rate_limit_per_minute", 15))),
+            daily_budget_usd=float(get_val("DAILY_BUDGET_USD", sec_dict.get("daily_budget_usd", 5.0))),
         )
 
         return RootConfig(
@@ -225,120 +228,76 @@ class ConfigManager:
             agent=agent_cfg,
             tools=tools_cfg,
             storage=storage_cfg,
-            security=security_cfg,
+            security=sec_cfg,
         )
 
-    def save_env_file(self, env_vars: Dict[str, Any]) -> None:
-        """Write key-value dictionary to .env file with secure file permissions (0600)."""
-        lines = [
-            "# Auto-generated by Telegram Agent Setup Wizard",
-            f"APP_ENV={env_vars.get('APP_ENV', 'production')}",
-            f"LOG_LEVEL={env_vars.get('LOG_LEVEL', 'INFO')}",
-            f"TIMEZONE={env_vars.get('TIMEZONE', 'Asia/Jakarta')}",
-            "",
-            "# Telegram",
-            f"TELEGRAM_BOT_TOKEN={env_vars.get('TELEGRAM_BOT_TOKEN', '')}",
-            f"TELEGRAM_ALLOWED_USERS={env_vars.get('TELEGRAM_ALLOWED_USERS', '')}",
-            f"ADMIN_TELEGRAM_USERS={env_vars.get('ADMIN_TELEGRAM_USERS', '')}",
-            f"TELEGRAM_MODE={env_vars.get('TELEGRAM_MODE', 'polling')}",
-            f"ENABLE_PRIVATE_CHAT={str(env_vars.get('ENABLE_PRIVATE_CHAT', True)).lower()}",
-            f"ENABLE_GROUP_CHAT={str(env_vars.get('ENABLE_GROUP_CHAT', False)).lower()}",
-            "",
-            "# AI Provider",
-            f"AI_PROVIDER={env_vars.get('AI_PROVIDER', 'openai')}",
-            f"AI_API_KEY={env_vars.get('AI_API_KEY', '')}",
-            f"AI_MODEL={env_vars.get('AI_MODEL', 'gpt-4o')}",
-            f"AI_BASE_URL={env_vars.get('AI_BASE_URL', '')}",
-            f"AI_TEMPERATURE={env_vars.get('AI_TEMPERATURE', 0.2)}",
-            f"AI_MAX_TOKENS={env_vars.get('AI_MAX_TOKENS', 2048)}",
-            "",
-            "# Agent",
-            f"AGENT_NAME={env_vars.get('AGENT_NAME', 'Assistant')}",
-            f"AGENT_PERSONALITY={env_vars.get('AGENT_PERSONALITY', 'Professional')}",
-            f"AGENT_SYSTEM_PROMPT={env_vars.get('AGENT_SYSTEM_PROMPT', 'You are a helpful and accurate AI assistant.')}",
-            "",
-            "# Tools",
-            f"ENABLE_WEB_SEARCH={str(env_vars.get('ENABLE_WEB_SEARCH', True)).lower()}",
-            f"ENABLE_GITHUB={str(env_vars.get('ENABLE_GITHUB', False)).lower()}",
-            f"GITHUB_TOKEN={env_vars.get('GITHUB_TOKEN', '')}",
-            f"GITHUB_DEFAULT_REPO={env_vars.get('GITHUB_DEFAULT_REPO', '')}",
-            f"GITHUB_ALLOW_WRITE={str(env_vars.get('GITHUB_ALLOW_WRITE', False)).lower()}",
-            f"ENABLE_FILESYSTEM={str(env_vars.get('ENABLE_FILESYSTEM', True)).lower()}",
-            f"FILESYSTEM_ROOT_DIR={env_vars.get('FILESYSTEM_ROOT_DIR', './data')}",
-            f"FILESYSTEM_READ_ONLY={str(env_vars.get('FILESYSTEM_READ_ONLY', True)).lower()}",
-            f"ALLOW_SHELL={str(env_vars.get('ALLOW_SHELL', False)).lower()}",
-            f"REQUIRE_CONFIRMATION_FOR_DESTRUCTIVE={str(env_vars.get('REQUIRE_CONFIRMATION_FOR_DESTRUCTIVE', True)).lower()}",
-            "",
-            "# Storage & Security",
-            f"MEMORY_ENABLED={str(env_vars.get('MEMORY_ENABLED', True)).lower()}",
-            f"MEMORY_PROVIDER={env_vars.get('MEMORY_PROVIDER', 'sqlite')}",
-            f"DATABASE_PATH={env_vars.get('DATABASE_PATH', 'data/agent.db')}",
-            f"MEMORY_RETENTION_DAYS={env_vars.get('MEMORY_RETENTION_DAYS', 0)}",
-            f"RATE_LIMIT_REQUESTS_PER_MINUTE={env_vars.get('RATE_LIMIT_REQUESTS_PER_MINUTE', 15)}",
-            f"DAILY_BUDGET_USD={env_vars.get('DAILY_BUDGET_USD', 5.0)}",
-            ""
-        ]
+    def save_env_file(self, env_dict: Dict[str, Any]) -> None:
+        """Write key-value dictionary to .env file and set 0600 file permissions."""
+        lines = ["# Telegram Agent Configuration Auto-Generated", "# Permissions: 0600 (Restricted to owner)\n"]
+        for k, v in env_dict.items():
+            if isinstance(v, bool):
+                val_str = "true" if v else "false"
+            elif v is None:
+                val_str = ""
+            else:
+                val_str = str(v)
+            lines.append(f"{k}={val_str}")
 
-        content = "\n".join(lines)
+        content = "\n".join(lines) + "\n"
+
+        # Write to file
         with open(self.env_path, "w", encoding="utf-8") as f:
             f.write(content)
 
-        # Apply strict file permissions: chmod 600 (owner read/write only)
+        # Set file permission to 0600 (chmod 600)
         try:
             os.chmod(self.env_path, stat.S_IRUSR | stat.S_IWUSR)
-        except Exception:
+        except OSError:
             pass
 
-    def get_masked_view(self, config: RootConfig) -> Dict[str, Any]:
-        """Produce safe configuration representation with masked secrets for inspection."""
-        def mask_str(s: str) -> str:
-            if not s:
-                return "(not configured)"
-            if len(s) <= 8:
-                return "********"
-            return s[:4] + "..." + s[-4:]
+    def get_masked_config(self) -> Dict[str, Any]:
+        """Return config with secrets masked for safe CLI display."""
+        config = self.load_config()
+        raw = config.model_dump()
+
+        # Mask secrets
+        if raw.get("telegram", {}).get("bot_token"):
+            token = raw["telegram"]["bot_token"]
+            raw["telegram"]["bot_token"] = token[:6] + "..." + token[-4:] if len(token) > 10 else "***"
+
+        if raw.get("ai", {}).get("api_key"):
+            key = raw["ai"]["api_key"]
+            raw["ai"]["api_key"] = key[:3] + "..." + key[-4:] if len(key) > 7 else "***"
+
+        if raw.get("tools", {}).get("github", {}).get("token"):
+            gh_tok = raw["tools"]["github"]["token"]
+            raw["tools"]["github"]["token"] = gh_tok[:4] + "..." if len(gh_tok) > 6 else "***"
+
+        return raw
+
+    def get_masked_view(self, config: Optional[RootConfig] = None) -> Dict[str, Any]:
+        """Return human-readable sectioned masked view."""
+        if config is None:
+            config = self.load_config()
+
+        tg_token = config.telegram.bot_token
+        masked_tg = tg_token[:6] + "..." + tg_token[-4:] if len(tg_token) > 10 else "***"
+
+        ai_key = config.ai.api_key
+        masked_ai = ai_key[:3] + "..." + ai_key[-4:] if len(ai_key) > 7 else "***"
 
         return {
-            "App": {
-                "Environment": config.app.env,
-                "Log Level": config.app.log_level,
-                "Timezone": config.app.timezone,
-            },
             "Telegram": {
-                "Bot Token": mask_str(config.telegram.bot_token),
-                "Allowed Users": config.telegram.allowed_users if config.telegram.allowed_users else "Allowlist disabled (Open access)",
-                "Admin Users": config.telegram.admin_users,
-                "Mode": config.telegram.mode,
-                "Private Chat": "Enabled" if config.telegram.enable_private_chat else "Disabled",
-                "Group Chat": "Enabled" if config.telegram.enable_group_chat else "Disabled",
+                "Bot Token": masked_tg,
+                "Allowed Users": config.telegram.allowed_users,
             },
             "AI Provider": {
                 "Provider": config.ai.provider,
-                "API Key": mask_str(config.ai.api_key),
                 "Model": config.ai.model,
-                "Base URL": config.ai.base_url or "(default)",
-                "Temperature": config.ai.temperature,
+                "API Key": masked_ai,
             },
             "Agent": {
                 "Name": config.agent.name,
                 "Personality": config.agent.personality,
-            },
-            "Tools": {
-                "Web Search": "Enabled" if config.tools.web_search.enabled else "Disabled",
-                "GitHub": "Enabled" if config.tools.github.enabled else "Disabled",
-                "GitHub Token": mask_str(config.tools.github.token) if config.tools.github.enabled else "N/A",
-                "Filesystem": "Enabled" if config.tools.filesystem.enabled else "Disabled",
-                "Filesystem Read-Only": config.tools.filesystem.read_only,
-                "Shell Execution": "Enabled" if config.tools.shell.enabled else "Disabled",
-                "Confirmation for Destructive": config.tools.require_confirmation_for_destructive,
-            },
-            "Storage": {
-                "Memory Enabled": config.storage.memory_enabled,
-                "Database Path": config.storage.database_path,
-                "Retention": f"{config.storage.retention_days} days" if config.storage.retention_days > 0 else "Unlimited",
-            },
-            "Security": {
-                "Rate Limit": f"{config.security.rate_limit_per_minute} req/min",
-                "Daily Budget": f"${config.security.daily_budget_usd}",
             }
         }
