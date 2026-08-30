@@ -225,10 +225,4 @@ Agents-Telegram/
 
 ## 📄 License
 
-Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more information.
-
----
-
-<div align="center">
-Made with ❤️ by <a href="https://github.com/h1ntz0">h1ntz0</a>
-</div>
+Distributed under the [MIT License](LICENSE).
