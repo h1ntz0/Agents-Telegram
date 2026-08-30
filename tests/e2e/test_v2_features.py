@@ -80,7 +80,8 @@ async def test_multimodal_photo_with_caption(v2_orchestrator_setup):
     # 1. Check AI request received the photo context + caption
     assert len(mock_ai.request_history) == 1
     last_user_msg = [m for m in mock_ai.request_history[0].messages if m.role == Role.USER][-1]
-    assert "[Photo Attached" in last_user_msg.content
+    assert "image_base64" in last_user_msg.metadata
+    assert last_user_msg.metadata["mime_type"] == "image/jpeg"
     assert "Analyze this system architecture diagram" in last_user_msg.content
 
     # 2. Check outbound Telegram message sent
@@ -107,7 +108,7 @@ async def test_multimodal_photo_without_caption(v2_orchestrator_setup):
 
     assert len(mock_ai.request_history) == 1
     last_user_msg = [m for m in mock_ai.request_history[0].messages if m.role == Role.USER][-1]
-    assert "[Photo Attached" in last_user_msg.content
+    assert "image_base64" in last_user_msg.metadata
 
 
 @pytest.mark.asyncio

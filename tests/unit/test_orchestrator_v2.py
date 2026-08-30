@@ -86,7 +86,6 @@ async def test_orchestrator_photo_multimodal(orchestrator_setup):
     assert len(mock_ai.recorded_requests) == 1
     last_req = mock_ai.recorded_requests[0]
     user_msg = [m for m in last_req.messages if m.role.value == "user"][-1]
-    assert "[Photo Attached: 800x600" in user_msg.content
     assert "What is depicted in this photo?" in user_msg.content
     assert "image_base64" in user_msg.metadata
 

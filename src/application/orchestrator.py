@@ -142,11 +142,10 @@ class AgentOrchestrator:
                 b64_photo = base64.b64encode(photo_bytes).decode("utf-8")
                 message_metadata["image_base64"] = b64_photo
                 message_metadata["mime_type"] = "image/jpeg"
-                img_desc = f"[Photo Attached: {width}x{height}, {file_size} bytes]"
-                processed_prompt = f"{img_desc}\n{caption}" if caption else f"{img_desc}\nPlease analyze and describe this image in detail."
+                processed_prompt = caption if caption else "Tolong analisis dan jelaskan gambar terlampir ini secara detail."
             except Exception as e:
                 logger.error(f"Failed to process photo: {str(e)}")
-                processed_prompt = f"[Photo Attached (Download Error: {str(e)})]\n{caption or 'Please analyze this photo.'}"
+                processed_prompt = f"Gagal mengunduh foto ({str(e)}). {caption or ''}"
 
         # Case B: Document attachment (txt, csv, json, code, markdown, etc.)
         elif "document" in message_data:
