@@ -30,10 +30,13 @@ if not exist ".venv\Scripts\python.exe" (
     )
 )
 
-REM 3. Install
-echo [INFO] Installing dependencies...
-.venv\Scripts\python.exe -m pip install --quiet --upgrade pip
-.venv\Scripts\python.exe -m pip install --quiet -e .
+REM 3. Install & Verify Dependencies
+.venv\Scripts\python.exe -c "import httpx, pydantic, yaml, aiosqlite" >nul 2>nul
+if %ERRORLEVEL% neq 0 (
+    echo [INFO] Installing project dependencies automatically...
+    .venv\Scripts\python.exe -m pip install --quiet --upgrade pip
+    .venv\Scripts\python.exe -m pip install --quiet -e .
+)
 
 REM 4. Run Setup
 echo [INFO] Launching Setup Wizard...

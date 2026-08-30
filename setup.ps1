@@ -28,10 +28,20 @@ if (-not (Test-Path $venvPython)) {
     Invoke-Expression "$pythonCmd -m venv `"$venvPath`""
 }
 
-# 3. Install Dependencies
-Write-Host "Installing dependencies..." -ForegroundColor Yellow
-& $venvPython -m pip install --quiet --upgrade pip
-& $venvPython -m pip install --quiet -e .
+# 3. Automatic Dependency Verification & Installation
+$needsInstall = $false
+try {
+    & $venvPython -c "import httpx, pydantic, yaml, aiosqlite" 2>$null
+    if ($LASTEXITCODE -ne 0) { $needsInstall = $true }
+} catch {
+    $needsInstall = $true
+}
+
+if ($needsInstall) {
+    Write-Host "Installing project dependencies automatically..." -ForegroundColor Yellow
+    & $venvPython -m pip install --quiet --upgrade pip
+    & $venvPython -m pip install --quiet -e .
+}
 
 # 4. Launch Setup Wizard
 Write-Host "Launching Setup Wizard..." -ForegroundColor Green

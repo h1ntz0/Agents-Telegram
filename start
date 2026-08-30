@@ -9,9 +9,16 @@ else
 fi
 cd "$ROOT_DIR"
 
-if [ ! -d ".venv" ]; then
+if [ ! -d ".venv" ] || [ ! -f ".venv/bin/python" ]; then
     echo "Virtual environment not found. Running setup..."
-    ./scripts/setup
+    ./setup
+fi
+
+# Ensure dependencies are available before launching
+if ! ./.venv/bin/python -c "import httpx, pydantic, yaml, aiosqlite" >/dev/null 2>&1; then
+    echo "Installing missing dependencies..."
+    ./.venv/bin/pip install --quiet --upgrade pip
+    ./.venv/bin/pip install --quiet -e .
 fi
 
 exec ./.venv/bin/python -m src start "$@"
