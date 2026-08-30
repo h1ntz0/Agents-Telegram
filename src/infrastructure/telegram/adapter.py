@@ -5,7 +5,7 @@ import logging
 from typing import Any, Callable, Coroutine, Dict, List, Optional, Tuple
 import httpx
 from src.domain.user import TelegramUser
-from src.infrastructure.telegram.formatter import split_message_chunks
+from src.infrastructure.telegram.formatter import markdown_to_telegram_html, split_message_chunks
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +175,7 @@ class TelegramAdapter:
         text: str,
         reply_markup: Optional[Dict[str, Any]] = None,
         reply_to_message_id: Optional[int] = None,
-        parse_mode: Optional[str] = None,
+        parse_mode: Optional[str] = "HTML",
     ) -> List[int]:
         """Send text message, chunking if necessary. Returns created message IDs."""
         chunks = split_message_chunks(text)
@@ -187,9 +187,10 @@ class TelegramAdapter:
         client = await self._get_client()
 
         for idx, chunk in enumerate(chunks):
+            formatted_text = markdown_to_telegram_html(chunk) if parse_mode == "HTML" else chunk
             payload: Dict[str, Any] = {
                 "chat_id": chat_id,
-                "text": chunk,
+                "text": formatted_text,
                 "disable_web_page_preview": True
             }
             if parse_mode:
@@ -209,8 +210,9 @@ class TelegramAdapter:
                     if data.get("ok"):
                         message_ids.append(data["result"]["message_id"])
                 else:
-                    # Retry without parse_mode if Markdown parsing failed on edge characters
+                    # Retry without parse_mode if HTML/Markdown parsing failed
                     if parse_mode and res.status_code == 400:
+                        payload["text"] = chunk
                         payload.pop("parse_mode", None)
                         res = await client.post(url, json=payload)
                         if res.status_code == 200 and res.json().get("ok"):
@@ -228,14 +230,15 @@ class TelegramAdapter:
         message_id: int,
         text: str,
         reply_markup: Optional[Dict[str, Any]] = None,
-        parse_mode: Optional[str] = None,
+        parse_mode: Optional[str] = "HTML",
     ) -> bool:
         """Edit an existing bot message (e.g. for progress updates or confirmation responses)."""
         url = f"{self.base_url}/editMessageText"
+        formatted_text = markdown_to_telegram_html(text) if parse_mode == "HTML" else text
         payload: Dict[str, Any] = {
             "chat_id": chat_id,
             "message_id": message_id,
-            "text": text,
+            "text": formatted_text,
             "disable_web_page_preview": True
         }
         if parse_mode:
@@ -250,6 +253,7 @@ class TelegramAdapter:
                 return True
             # Fallback if markdown error
             if parse_mode and res.status_code == 400:
+                payload["text"] = text
                 payload.pop("parse_mode", None)
                 res = await client.post(url, json=payload)
                 return res.status_code == 200 and res.json().get("ok", False)
