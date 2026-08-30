@@ -8,6 +8,7 @@ import sys
 from typing import Any, Dict, List, Optional
 from src.application.config_manager import ConfigManager, RootConfig
 from src.infrastructure.ai.factory import create_ai_provider
+from src.infrastructure.ai.model_discovery import fetch_available_models
 from src.infrastructure.telegram.adapter import TelegramAdapter
 
 PROVIDER_MODEL_MENUS: Dict[str, List[str]] = {
@@ -272,11 +273,17 @@ class SetupWizard:
                 api_key = ""
                 env_dict["AI_API_KEY"] = ""
 
-            # Model Selection (Accepts number OR direct model name typed by user)
-            model_options = PROVIDER_MODEL_MENUS.get(provider, ["Ketik nama model manual (Custom)"])
-            default_model = existing_cfg.ai.model if existing_cfg else model_options[0]
+            # Dynamic Live Model Discovery from Provider API
+            print(f"\n→ Mengambil daftar model yang tersedia dari {provider.upper()}...")
+            discovered = await fetch_available_models(provider, api_key=api_key, base_url=base_url)
+            clean_discovered = [m for m in discovered if m != "Ketik nama model manual (Custom)"]
+            if not clean_discovered:
+                clean_discovered = [m for m in PROVIDER_MODEL_MENUS.get(provider, []) if m != "Ketik nama model manual (Custom)"]
+            
+            model_options = clean_discovered + ["Ketik nama model manual (Custom)"]
+            default_model = existing_cfg.ai.model if (existing_cfg and existing_cfg.ai.model in model_options) else model_options[0]
 
-            print(f"\n? Pilih Model AI untuk {provider.upper()}:")
+            print(f"\n? Pilih Model AI untuk {provider.upper()} ({len(clean_discovered)} model ditemukan):")
             for i, opt in enumerate(model_options, 1):
                 marker = ">" if opt == default_model else " "
                 print(f"  {marker} {i}. {opt}")

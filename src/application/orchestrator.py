@@ -14,6 +14,7 @@ from src.application.config_manager import RootConfig
 from src.application.multiagent_sdlc import MultiAgentSDLC
 from src.domain.agent import AgentState, Message, PendingConfirmation, Role, Session, ToolCall, ToolResponse
 from src.domain.provider import AIProvider, CompletionRequest, PROVIDER_MODELS_CATALOG
+from src.infrastructure.ai.model_discovery import fetch_available_models
 from src.infrastructure.database.sqlite_db import SqliteDatabase
 from src.infrastructure.scheduler.job_scheduler import JobScheduler, ScheduledJob
 from src.infrastructure.security.humanizer import humanize_response
@@ -291,9 +292,18 @@ class AgentOrchestrator:
                 )
                 return
 
-            catalog_models = PROVIDER_MODELS_CATALOG.get(provider_name, [])
+            # Dynamically discover live models for the active provider
+            catalog_models = await fetch_available_models(
+                provider_name=provider_name,
+                api_key=self.config.ai.api_key,
+                base_url=self.config.ai.base_url
+            )
+            if not catalog_models:
+                catalog_models = PROVIDER_MODELS_CATALOG.get(provider_name, [])
+
+            # Cap inline keyboard buttons to 15 to avoid overwhelming Telegram UI
             buttons: List[List[Dict[str, str]]] = []
-            for m in catalog_models:
+            for m in catalog_models[:15]:
                 buttons.append([{"text": f"Select {m}", "callback_data": f"set_model:{m}"}])
 
             markup = {"inline_keyboard": buttons} if buttons else None
