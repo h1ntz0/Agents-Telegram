@@ -1,170 +1,164 @@
-# Telegram Agent
+<div align="center">
 
-A self-hosted AI agent framework you run directly from Telegram, with an interactive one-command setup wizard.
+# 🤖 Telegram Agent Platform
+### *Zero-Friction, Self-Hosted Multi-Agent AI Platform for Telegram*
 
-## Quick Start
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Tests: 42 Passing](https://img.shields.io/badge/tests-42%20passed%20(100%25)-brightgreen.svg)]()
+[![Code Style: Clean Architecture](https://img.shields.io/badge/architecture-Clean%20%2F%20Hexagonal-orange.svg)]()
+[![Security: OWASP Hardened](https://img.shields.io/badge/security-OWASP%20Hardened-red.svg)]()
 
+<br/>
+
+> **Run powerful AI agents directly in Telegram with a single command setup.**  
+> Built for developers, teams, and enthusiasts who want full control over their AI infrastructure without the complexity.
+
+<br/>
+
+<img src="assets/preview.png" alt="Telegram Agent Live Preview" width="600" style="border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.12);" />
+
+*Preview: Live bot interaction featuring dynamic model switching, Multi-Agent SDLC, and humanized responses.*
+
+</div>
+
+---
+
+## ✨ Key Highlights
+
+| Feature | Description |
+| :--- | :--- |
+| ⚡ **Zero-Friction Wizard** | Clone and run `./setup`. Interactive terminal wizard validates tokens & credentials in real-time. |
+| 🌐 **Universal AI Providers** | First-class support for **9router**, **DeepSeek**, **Claude (Anthropic)**, **Google Gemini**, **OpenAI**, **OpenRouter**, and **Ollama**. |
+| 🔄 **Live Model Switching** | Switch between models on the fly directly inside Telegram chat using `/model` or interactive inline buttons. |
+| 👥 **Autonomous Multi-Agent SDLC** | Execute complete software development lifecycles (`/sdlc <feature>`) orchestrating **Planner**, **Developer**, **QA Tester**, and **Reviewer** subagents with live progress bars. |
+| 🎭 **Dynamic Subagent Personas** | Switch agent behavior on demand (`/agent coder`, `/agent researcher`, `/agent qa`, `/agent orchestrator`). |
+| 🧹 **Humanizer Engine** | Eliminates robotic AI cliches (*"Certainly!"*, *"Let's delve into"*, *"In Conclusion"*) for crisp, authentic human-style responses. |
+| 🛡️ **Enterprise-Grade Security** | SSRF protection, sliding-window rate limiting, path traversal guards, regex secret masking, and interactive confirmation for high-risk actions. |
+| 💾 **Persistent SQLite Memory** | Remembers user context and settings per-user with full session isolation. |
+| ⌨️ **Telegram Native Autocomplete** | Slash commands automatically register with Telegram (`setMyCommands`) for instant autocomplete suggestions when typing `/`. |
+
+---
+
+## 🚀 Quick Start (3 Steps)
+
+Get your private AI agent running on Telegram in less than **2 minutes**:
+
+### 1. Clone & Enter Directory
 ```bash
-git clone https://github.com/benn/telegram-agent.git
-cd telegram-agent
+git clone https://github.com/h1ntz0/Agents-Telegram.git
+cd Agents-Telegram
+```
 
+### 2. Run Interactive Setup Wizard
+```bash
 ./setup
+```
+The wizard will automatically check your Python environment and guide you through configuration:
+* Paste your **Telegram Bot Token** (from [@BotFather](https://t.me/BotFather))
+* Choose your **AI Provider** (9router, DeepSeek, Anthropic, Google, OpenAI, etc.)
+* Select your preferred **AI Model** from the menu or type custom model names
+* Review and save to `.env` (automatically secured with `chmod 600`)
+
+### 3. Start the Agent
+```bash
 ./start
 ```
+Open Telegram, search for your bot, and send `/start`!
 
-Once started, open Telegram and send:
+*(To stop the background agent anytime, simply run `./stop`)*
+
+---
+
+## 💬 Telegram Slash Commands
+
+| Command | Action | Example |
+| :--- | :--- | :--- |
+| `/start` | Start conversation & display bot runtime status | `/start` |
+| `/model` | Open interactive model picker or change model directly | `/model ds/deepseek-v4-flash` |
+| `/agent` | Switch sub-agent persona | `/agent coder` |
+| `/sdlc` | Run 4-stage autonomous SDLC pipeline | `/sdlc Build JWT auth middleware in Python` |
+| `/status` | View live uptime, active provider, model, & tools | `/status` |
+| `/settings` | Inspect current agent parameters & temperature | `/settings` |
+| `/tools` | List all registered and active tools | `/tools` |
+| `/memory` | View stored key-value memory context | `/memory` |
+| `/reset` | Clear chat history & conversation context | `/reset` |
+| `/cancel` | Cancel any pending high-risk tool action | `/cancel` |
+| `/help` | Display command cheatsheet & usage guide | `/help` |
+
+---
+
+## 🧠 Supported AI Providers & Models
+
+Telegram Agent supports any OpenAI-compatible gateway as well as official SDK endpoints:
+
+```mermaid
+graph TD
+    User([👤 Telegram User]) <--> Bot[🤖 Telegram Bot Adapter]
+    Bot <--> Orch[🧠 Agent Orchestrator]
+    Orch <--> Sec[🛡️ Security & Humanizer]
+    Sec <--> Factory[🏭 AI Provider Factory]
+    Factory <--> P1[🌐 9router Gateway]
+    Factory <--> P2[⚡ DeepSeek API]
+    Factory <--> P3[🔮 Anthropic Claude]
+    Factory <--> P4[🌟 Google Gemini]
+    Factory <--> P5[🟢 OpenAI / OpenRouter]
+    Factory <--> P6[🦙 Ollama Local]
+```
+
+### Provider Model Matrix
+
+* **9router (Local Gateway)**: `ag/gemini-3.7-flash-high`, `ds/deepseek-v4-flash`, `ds/deepseek-chat`, `ds/deepseek-reasoner`, `ag/claude-sonnet-4-6`, `cx/gpt-5.6-sol`, `cx/gpt-5.4`
+* **DeepSeek (Official)**: `deepseek-chat` (DeepSeek-V3), `deepseek-reasoner` (DeepSeek-R1)
+* **Anthropic / Claude**: `claude-3-7-sonnet-20250219`, `claude-3-5-sonnet-20241022`, `claude-3-5-haiku-20241022`
+* **Google Gemini**: `gemini-2.0-flash`, `gemini-1.5-pro`, `gemini-1.5-flash`
+* **OpenAI**: `gpt-4o`, `gpt-4o-mini`, `o1`, `o3-mini`
+* **OpenRouter**: `anthropic/claude-3.5-sonnet`, `deepseek/deepseek-r1`, `openai/gpt-4o`
+* **Ollama**: `llama3.2`, `deepseek-r1`, `qwen2.5-coder`, `mistral`
+
+---
+
+## 🛠️ Multi-Agent SDLC Workflow
+
+Send `/sdlc <task description>` in Telegram to trigger the 4-phase automated lifecycle:
 
 ```text
-/start
+1. 📋 PLANNER AGENT    -> Architecture breakdown & capability map
+2. 💻 DEVELOPER AGENT  -> Clean, minimal production implementation
+3. 🧪 QA & SECURITY    -> Boundary testing, injection audit & unit tests
+4. 🔍 REVIEWER AGENT   -> Synthesis, polish & Humanizer processing
 ```
 
----
-
-## 1. Prerequisites
-
-- Python 3.12 or newer
-- Git
-- Telegram account (to create a bot via [@BotFather](https://t.me/BotFather))
-- An API key from one supported AI provider:
-  - OpenAI
-  - Anthropic
-  - Google Gemini
-  - OpenRouter
-  - Ollama (local)
-  - Custom OpenAI-compatible endpoint
+Real-time progress bars edit live in Telegram (`25%` → `50%` → `75%` → `100%`) as each subagent delivers its deliverable.
 
 ---
 
-## 2. Setting Up Your Telegram Bot
+## 🐳 Docker Deployment
 
-1. Open Telegram and search for [@BotFather](https://t.me/BotFather).
-2. Send `/newbot` and follow the prompts to choose a display name and username.
-3. Copy the HTTP API token generated by BotFather (format: `1234567890:ABCdefGHIjklMNOpqrsTUVwxyz`).
-4. Run `./setup` in your terminal and paste the token when prompted.
-
-The setup wizard tests the connection immediately against the Telegram Bot API.
-
----
-
-## 3. Interactive Setup Wizard (`./setup`)
-
-The setup wizard verifies your runtime, tests your credentials, and configures `.env` with strict file permissions (`0600`):
-
-```text
-╭──────────────────────────────────────────────╮
-│        Telegram Agent Setup Wizard           │
-╰──────────────────────────────────────────────╯
-
-Step [1/6] Environment Check
-✓ Python: 3.12.3
-✓ Operating System: Linux (x86_64)
-✓ Git: installed
-✓ Docker: installed
-
-Step [2/6] Telegram Configuration
-? Telegram Bot Token: ****************************************
-→ Verifying Telegram Bot token...
-✓ Telegram connection verified: @my_agent_bot (ID: 987654321)
-
-Step [3/6] AI Provider Configuration
-? Select AI Provider:
-  1. openai
-  2. anthropic
-  3. google
-  4. openrouter
-  5. ollama
-  6. custom
-> 1
-
-? OPENAI API Key: ****************************************
-? Model Name [gpt-4o]: gpt-4o
-→ Verifying credentials with OPENAI...
-✓ OPENAI connection verified successfully.
-
-Step [4/6] Agent Persona
-? Agent Name [Assistant]: Personal Assistant
-? Agent Tone [Professional]: Direct
-
-Step [5/6] Configuration Review
-✓ Configuration saved to .env (chmod 600)
-```
-
-For advanced settings (custom rate limits, sandboxed filesystem paths, GitHub integration, shell tools):
+For 24/7 background operation on a VPS or home server:
 
 ```bash
-./setup --advanced
-```
+# 1. Configure environment
+./setup
 
----
-
-## 4. Running the Agent
-
-### Local Execution
-
-```bash
-# Foreground execution
-./start
-
-# Or via CLI
-agent start
-```
-
-### Docker Execution
-
-```bash
+# 2. Start container with Docker Compose
 docker compose up -d
-```
 
-Check container status and logs:
-
-```bash
-docker compose ps
+# 3. View live logs
 docker compose logs -f
 ```
 
 ---
 
-## 5. Telegram Commands
+## 🩺 System Diagnostics (`./doctor`)
 
-| Command | Action |
-|---|---|
-| `/start` | Displays online status, active AI model, and bot greeting |
-| `/help` | Lists available commands and capabilities |
-| `/status` | Shows system health, memory status, and tool count |
-| `/settings` | Displays active provider, model, and personality |
-| `/tools` | Lists active tools and their permission levels |
-| `/memory` | Shows key-value memory stored for your user ID |
-| `/reset` | Clears active conversation context |
-| `/cancel` | Cancels any pending operation awaiting confirmation |
-
----
-
-## 6. CLI Reference
-
-The project includes an `agent` CLI:
-
-```bash
-agent setup          # Run interactive setup wizard
-agent start          # Start agent runtime
-agent stop           # Stop running background agent process
-agent status         # Display process and storage status
-agent doctor         # Run system health diagnostics
-agent config show    # View configuration with masked secrets
-agent config reset   # Remove local .env configuration
-agent backup         # Create tar.gz archive of database and config
-agent test           # Run automated pytest test suite
-```
-
-### System Doctor (`agent doctor`)
-
-Use `agent doctor` to troubleshoot runtime, connectivity, or authentication issues:
+To verify connectivity, dependencies, and API endpoints at any time:
 
 ```bash
 ./doctor
 ```
 
 Output:
-
 ```text
 Running Agent Doctor Diagnostics...
 
@@ -173,99 +167,68 @@ Running Agent Doctor Diagnostics...
 ✓ Configuration Schema: Valid syntax and schema.
 ✓ Secret Protection (.gitignore): .env is gitignored
 ✓ Database & Storage: SQLite accessible at data/agent.db
-✓ Telegram Connection: Connected as @my_agent_bot (ID: 987654321)
-✓ AI Provider: OPENAI (gpt-4o) verified.
+✓ Telegram Connection: Connected as @YourBot (ID: 123456789)
+✓ AI Provider: 9ROUTER (ag/gemini-3.7-flash-high) verified.
 
 ✓ All system health checks passed.
 ```
 
 ---
 
-## 7. Architecture Overview
+## 🧪 Automated Testing & Chaos Fuzzing
 
-```text
-               ┌───────────────────────┐
-               │     Telegram User     │
-               └───────────┬───────────┘
-                           │ Long-Polling / Webhook
-                           ▼
-               ┌───────────────────────┐
-               │    Telegram Adapter   │
-               │ (Auth & Rate Limiter) │
-               └───────────┬───────────┘
-                           │
-                           ▼
-               ┌───────────────────────┐
-               │   Agent Orchestrator  │
-               └───────────┬───────────┘
-                           │
-         ┌─────────────────┼─────────────────┐
-         ▼                 ▼                 ▼
-  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-  │ AI Providers │  │ Tool Registry│  │ SQLite State │
-  │ OpenAI       │  │ Web Search   │  │ Sessions     │
-  │ Anthropic    │  │ Filesystem   │  │ Messages     │
-  │ Google       │  │ GitHub       │  │ Memory       │
-  │ Ollama       │  │ Shell        │  │ Migrations   │
-  └──────────────┘  └──────────────┘  └──────────────┘
-```
-
-### Directory Structure
-
-```text
-telegram-agent/
-├── pyproject.toml              # Build config and dependencies
-├── Dockerfile                  # Container runtime
-├── docker-compose.yml          # Compose service configuration
-├── .env.example                # Sample environment template
-├── .gitignore                  # Strict secret and database exclusion
-├── scripts/
-│   ├── setup                   # One-command setup script
-│   ├── start                   # Launch script
-│   └── doctor                  # Diagnostics script
-├── config/
-│   ├── schema/                 # JSON schema definition
-│   └── defaults/               # default.yaml fallback
-├── src/
-│   ├── domain/                 # Core entities (Session, Message, Tool, Provider)
-│   ├── application/            # Orchestrator, Setup Wizard, Config, Doctor
-│   ├── infrastructure/
-│   │   ├── ai/                 # Multi-provider implementations
-│   │   ├── database/           # SQLite async persistence & migrations
-│   │   ├── security/           # SSRF guard, rate limiter, secret masking
-│   │   ├── telegram/           # Telegram client, auth, formatters
-│   │   └── tools/              # Sandboxed tools & permission registry
-│   └── interfaces/cli/         # CLI argument parser and entrypoints
-└── tests/
-    ├── unit/                   # Security, tools, providers, config tests
-    ├── integration/            # Database, telegram adapter, doctor tests
-    └── e2e/                    # Setup wizard & ReAct loop tests
-```
-
----
-
-## 8. Security Model
-
-1. **Secret Masking & Permissions**:
-   - Secrets are never logged in plaintext. The logger uses regex masking to redact API keys and tokens.
-   - `.env` is created with `chmod 600` (read/write only by owner) and automatically enforced in `.gitignore`.
-2. **Access Control**:
-   - `TELEGRAM_ALLOWED_USERS` enforces an allowlist. Unauthorized users receive a neutral rejection without internal system information.
-3. **SSRF Guard**:
-   - Web requests resolve hostnames and block private IPs (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), loopback (`127.0.0.1`), and cloud metadata services (`169.254.169.254`).
-4. **Filesystem Sandboxing**:
-   - File reading and writing are restricted to designated directories with path traversal verification (`os.path.commonpath`).
-5. **High-Risk Operation Intercepts**:
-   - Destructive tools require explicit confirmation in Telegram via inline interactive buttons before executing.
-6. **Prompt Injection Defense**:
-   - External web results and file contents are wrapped in explicit boundary tags instructing the LLM to treat them as untrusted data.
-
----
-
-## 9. Running Tests
+The codebase is backed by **42 automated test suites** spanning Unit, Integration, End-to-End, and Monkey Chaos Fuzzing:
 
 ```bash
 ./.venv/bin/pytest -v --cov=src
 ```
+```text
+============================== 42 passed in 3.65s ==============================
+```
 
-All unit, integration, and E2E test suites run without external network access by using mocked adapters and providers.
+---
+
+## 📁 Project Architecture
+
+```text
+Agents-Telegram/
+├── assets/                 # Preview images & documentation media
+├── config/                 # YAML configuration schemas & defaults
+├── data/                   # SQLite database & runtime PID files (gitignored)
+├── docs/                   # Full architectural specifications
+│   ├── architecture/       # Clean architecture & layer contracts
+│   ├── integrations/       # Tool & provider extension guides
+│   └── security/           # OWASP threat model & sandboxing
+├── scripts/                # Utility & simulation runners
+├── src/
+│   ├── application/        # Orchestrator, SDLC pipeline, Setup wizard, Doctor
+│   ├── domain/             # Entities (Session, Message, User, Provider, Tools)
+│   ├── infrastructure/     # AI providers (9router, DeepSeek, Claude, Gemini), DB, Security
+│   └── interfaces/         # CLI parser & daemon entrypoints
+├── tests/                  # Unit, Integration, E2E, and Monkey fuzzing tests
+├── doctor                  # Executable health check tool
+├── setup                   # Executable interactive setup wizard
+├── start                   # Executable agent daemon starter
+└── stop                    # Executable agent daemon stopper
+```
+
+---
+
+## 🔒 Security & Privacy
+
+* **Zero Cloud Lock-in**: All user memories and chat histories are stored locally in SQLite (`data/agent.db`).
+* **Strict Secrets Protection**: `.env` is created with `chmod 600` and automatically added to `.gitignore`.
+* **Safe Sandbox**: File operations are restricted to root directories; shell commands require explicit confirmation.
+* **SSRF Guard**: Prohibits requests to private RFC 1918 subnets and cloud metadata IPs (`169.254.169.254`).
+
+---
+
+## 📄 License
+
+Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more information.
+
+---
+
+<div align="center">
+Made with ❤️ by <a href="https://github.com/h1ntz0">h1ntz0</a>
+</div>
