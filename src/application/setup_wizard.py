@@ -1,4 +1,4 @@
-"""Interactive Setup Wizard with live API verification, progressive disclosure, and multi-provider support."""
+"""Interactive Setup Wizard with live API verification, progressive disclosure, and robust input validation."""
 
 import getpass
 import os
@@ -25,17 +25,42 @@ class SetupWizard:
             val = input(f"? {question}{default_str}: ").strip()
             return val if val else default
         except (KeyboardInterrupt, EOFError):
-            print("\nSetup aborted.")
+            print("\nSetup dibatalkan.")
             sys.exit(1)
+
+    def _prompt_int(self, question: str, default: int = 15) -> int:
+        """Prompt user for an integer with graceful validation and retry."""
+        while True:
+            raw = self._prompt(question, str(default))
+            try:
+                # If user typed 'y' or non-digit accidentally, fallback to default if empty or prompt again
+                clean = raw.strip()
+                if clean.lower() in ("y", "yes", "ok"):
+                    return default
+                return int(clean)
+            except ValueError:
+                print(f"Masukkan angka bilangan bulat yang valid (contoh: {default}).")
+
+    def _prompt_float(self, question: str, default: float = 5.0) -> float:
+        """Prompt user for a floating-point number with graceful validation."""
+        while True:
+            raw = self._prompt(question, str(default))
+            try:
+                clean = raw.strip()
+                if clean.lower() in ("y", "yes", "ok"):
+                    return default
+                return float(clean)
+            except ValueError:
+                print(f"Masukkan angka desimal yang valid (contoh: {default}).")
 
     def _prompt_secret(self, question: str, default: str = "") -> str:
         """Prompt for sensitive credentials securely."""
-        default_str = " [Press Enter to keep existing]" if default else ""
+        default_str = " [Tekan Enter untuk pakai nilai lama]" if default else ""
         try:
             val = getpass.getpass(f"? {question}{default_str}: ").strip()
             return val if val else default
         except (KeyboardInterrupt, EOFError):
-            print("\nSetup aborted.")
+            print("\nSetup dibatalkan.")
             sys.exit(1)
 
     def _prompt_choice(self, question: str, choices: list[str], default_idx: int = 0) -> str:
@@ -45,10 +70,10 @@ class SetupWizard:
             marker = ">" if (i - 1) == default_idx else " "
             print(f"  {marker} {i}. {choice}")
         while True:
-            val = self._prompt(f"Select option (1-{len(choices)})", str(default_idx + 1))
+            val = self._prompt(f"Pilih nomor opsi (1-{len(choices)})", str(default_idx + 1))
             if val.isdigit() and 1 <= int(val) <= len(choices):
                 return choices[int(val) - 1]
-            print("Invalid selection. Please enter a valid option number.")
+            print("Pilihan tidak valid. Silakan ketik angka opsi yang tersedia.")
 
     def _prompt_bool(self, question: str, default: bool = True) -> bool:
         """Prompt user for a yes/no boolean response."""
@@ -66,7 +91,7 @@ class SetupWizard:
         print("Step [1/6] Environment Check")
         py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
         if sys.version_info < (3, 12):
-            print(f"✗ Incompatible Python version: {py_ver}. Python 3.12+ is required.")
+            print(f"✗ Versi Python tidak kompatibel: {py_ver}. Diperlukan Python 3.12+.")
             return False
 
         os_name = f"{platform.system()} ({platform.release()})"
@@ -82,21 +107,21 @@ class SetupWizard:
         # Step 1: Existing configuration check
         existing_cfg: Optional[RootConfig] = None
         if os.path.exists(self.env_path):
-            print(f"Existing configuration detected in '{self.env_path}'.")
+            print(f"Konfigurasi lama ditemukan di '{self.env_path}'.")
             try:
                 existing_cfg = self.config_manager.load_config()
                 if not non_interactive:
                     action = self._prompt_choice(
-                        "What would you like to do?",
-                        ["Edit / Update configuration", "Keep existing & validate", "Reset configuration"],
+                        "Apa yang ingin Anda lakukan?",
+                        ["Edit / Update konfigurasi", "Pertahankan konfigurasi lama & uji", "Reset konfigurasi dari awal"],
                         0
                     )
-                    if action == "Keep existing & validate":
+                    if action == "Pertahankan konfigurasi lama & uji":
                         return await self._validate_and_finish(existing_cfg)
-                    elif action == "Reset configuration":
+                    elif action == "Reset konfigurasi dari awal":
                         os.remove(self.env_path)
                         existing_cfg = None
-                        print("Existing configuration cleared.\n")
+                        print("Konfigurasi lama berhasil dihapus.\n")
             except Exception:
                 existing_cfg = None
 
@@ -106,33 +131,33 @@ class SetupWizard:
         print("Step [2/6] Telegram Configuration")
         while True:
             default_token = existing_cfg.telegram.bot_token if existing_cfg else ""
-            token = self._prompt_secret("Telegram Bot Token (from @BotFather)", default_token)
+            token = self._prompt_secret("Telegram Bot Token (didapat dari @BotFather)", default_token)
             if not token:
-                print("Error: Telegram Bot Token cannot be empty.")
+                print("Error: Telegram Bot Token tidak boleh kosong.")
                 continue
 
-            print("→ Verifying Telegram Bot token...")
+            print("→ Memverifikasi token Telegram Bot...")
             try:
                 adapter = TelegramAdapter(bot_token=token)
                 bot_user = await adapter.get_me()
-                print(f"✓ Telegram connection verified: @{bot_user.username} (ID: {bot_user.id})")
+                print(f"✓ Koneksi Telegram terverifikasi: @{bot_user.username} (ID: {bot_user.id})")
                 env_dict["TELEGRAM_BOT_TOKEN"] = token
                 break
             except Exception as e:
-                print(f"✗ Telegram verification failed: {str(e)}")
-                if not self._prompt_bool("Would you like to re-enter the token?", default=True):
+                print(f"✗ Verifikasi Telegram gagal: {str(e)}")
+                if not self._prompt_bool("Ingin memasukkan ulang token?", default=True):
                     env_dict["TELEGRAM_BOT_TOKEN"] = token
                     break
 
         default_allowed = ",".join(map(str, existing_cfg.telegram.allowed_users)) if existing_cfg else ""
-        allowed_users = self._prompt("Allowed Telegram User IDs (comma-separated, leave blank for open access)", default_allowed)
+        allowed_users = self._prompt("Allowed Telegram User IDs (pisahkan dengan koma jika banyak, kosongkan untuk akses terbuka)", default_allowed)
         env_dict["TELEGRAM_ALLOWED_USERS"] = allowed_users
 
         # Step 3: AI Provider Configuration & Live Validation
         print("\nStep [3/6] AI Provider Configuration")
         providers = ["9router", "deepseek", "anthropic", "google", "openai", "openrouter", "ollama", "custom"]
         cur_prov = existing_cfg.ai.provider if existing_cfg and existing_cfg.ai.provider in providers else "9router"
-        provider = self._prompt_choice("Select AI Provider", providers, default_idx=providers.index(cur_prov))
+        provider = self._prompt_choice("Pilih AI Provider", providers, default_idx=providers.index(cur_prov))
         env_dict["AI_PROVIDER"] = provider
 
         default_model_map = {
@@ -156,7 +181,7 @@ class SetupWizard:
             base_url = self._prompt("DeepSeek API URL", default_ds_url)
             env_dict["AI_BASE_URL"] = base_url
         elif provider == "custom":
-            base_url = self._prompt("Custom OpenAI-compatible Base URL (e.g. http://localhost:8000/v1)", existing_cfg.ai.base_url if existing_cfg else "")
+            base_url = self._prompt("Custom OpenAI-compatible Base URL (contoh: http://localhost:8000/v1)", existing_cfg.ai.base_url if existing_cfg else "")
             env_dict["AI_BASE_URL"] = base_url
 
         while True:
@@ -166,38 +191,38 @@ class SetupWizard:
                 env_dict["AI_API_KEY"] = api_key
             elif provider == "9router":
                 default_key = existing_cfg.ai.api_key if existing_cfg else "9router-local"
-                api_key = self._prompt("9router API Key (optional for local instance)", default_key)
+                api_key = self._prompt("9router API Key (opsional untuk gateway lokal)", default_key)
                 env_dict["AI_API_KEY"] = api_key
             else:
                 api_key = ""
                 env_dict["AI_API_KEY"] = ""
 
             default_model = existing_cfg.ai.model if existing_cfg else default_model_map.get(provider, "gpt-4o")
-            model = self._prompt("Model Name", default_model)
+            model = self._prompt("Nama Model (contoh: deepseek-chat, deepseek-reasoner, gpt-4o, claude-3-5-sonnet-20241022)", default_model)
             env_dict["AI_MODEL"] = model
 
-            print(f"→ Verifying credentials with {provider.upper()}...")
+            print(f"→ Menguji kredensial ke {provider.upper()}...")
             try:
                 prov_inst = create_ai_provider(provider_name=provider, api_key=api_key, model=model, base_url=base_url)
                 valid = await prov_inst.validate_credentials()
                 if valid:
-                    print(f"✓ {provider.upper()} connection verified successfully.")
+                    print(f"✓ Koneksi ke {provider.upper()} berhasil diverifikasi.")
                     break
                 else:
-                    print(f"✗ Verification warning: Could not validate credentials with {provider.upper()}.")
-                    if not self._prompt_bool("Would you like to continue anyway?", default=True):
+                    print(f"✗ Peringatan: Gagal memvalidasi kredensial ke {provider.upper()}.")
+                    if not self._prompt_bool("Tetap gunakan konfigurasi ini dan lanjutkan?", default=True):
                         continue
                     break
             except Exception as e:
-                print(f"✗ Verification note: {str(e)}")
-                if not self._prompt_bool("Would you like to continue anyway?", default=True):
+                print(f"✗ Catatan verifikasi: {str(e)}")
+                if not self._prompt_bool("Tetap gunakan konfigurasi ini dan lanjutkan?", default=True):
                     continue
                 break
 
         # Step 4: Agent Persona
         print("\nStep [4/6] Agent Persona")
-        env_dict["AGENT_NAME"] = self._prompt("Agent Name", existing_cfg.agent.name if existing_cfg else "Personal Assistant")
-        env_dict["AGENT_PERSONALITY"] = self._prompt("Agent Tone / Personality", existing_cfg.agent.personality if existing_cfg else "Direct & Helpful")
+        env_dict["AGENT_NAME"] = self._prompt("Nama Agent", existing_cfg.agent.name if existing_cfg else "Personal Assistant")
+        env_dict["AGENT_PERSONALITY"] = self._prompt("Gaya Bahasa / Karakter Agent", existing_cfg.agent.personality if existing_cfg else "Direct & Helpful")
         env_dict["AGENT_SYSTEM_PROMPT"] = self._prompt(
             "System Prompt",
             existing_cfg.agent.system_prompt if existing_cfg else "You are a helpful and accurate AI assistant. You answer queries concisely and use tools when needed."
@@ -205,27 +230,27 @@ class SetupWizard:
 
         # Step 5: Advanced Preferences & Integrations
         if not advanced and not non_interactive:
-            advanced = self._prompt_bool("Configure advanced settings (Multi-Agent, Tools, GitHub, Memory)?", default=False)
+            advanced = self._prompt_bool("Konfigurasi pengaturan lanjutan (Multi-Agent, Tools, GitHub, Memory)?", default=False)
 
         if advanced:
             print("\nStep [5/6] Advanced Integrations & Security")
-            env_dict["ENABLE_WEB_SEARCH"] = self._prompt_bool("Enable Web Search?", default=True)
+            env_dict["ENABLE_WEB_SEARCH"] = self._prompt_bool("Aktifkan fitur Web Search?", default=True)
 
-            enable_gh = self._prompt_bool("Enable GitHub Integration?", default=False)
+            enable_gh = self._prompt_bool("Aktifkan integrasi GitHub?", default=False)
             env_dict["ENABLE_GITHUB"] = enable_gh
             if enable_gh:
                 env_dict["GITHUB_TOKEN"] = self._prompt_secret("GitHub Personal Access Token", "")
                 env_dict["GITHUB_DEFAULT_REPO"] = self._prompt("Default Repository (owner/repo)", "")
-                env_dict["GITHUB_ALLOW_WRITE"] = self._prompt_bool("Allow GitHub write operations (e.g. create issues)?", default=False)
+                env_dict["GITHUB_ALLOW_WRITE"] = self._prompt_bool("Izinkan operasi tulis GitHub (buat issues)?", default=False)
 
-            env_dict["ENABLE_FILESYSTEM"] = self._prompt_bool("Enable Sandboxed Filesystem Access?", default=True)
-            env_dict["FILESYSTEM_READ_ONLY"] = self._prompt_bool("Filesystem Read-Only mode?", default=True)
-            env_dict["ALLOW_SHELL"] = self._prompt_bool("Enable Shell Execution (HIGH RISK)?", default=False)
-            env_dict["REQUIRE_CONFIRMATION_FOR_DESTRUCTIVE"] = self._prompt_bool("Require User Confirmation for High-Risk Actions?", default=True)
+            env_dict["ENABLE_FILESYSTEM"] = self._prompt_bool("Aktifkan akses Filesystem Sandbox?", default=True)
+            env_dict["FILESYSTEM_READ_ONLY"] = self._prompt_bool("Mode Filesystem Read-Only?", default=True)
+            env_dict["ALLOW_SHELL"] = self._prompt_bool("Aktifkan eksekusi Shell Terminal (HIGH RISK)?", default=False)
+            env_dict["REQUIRE_CONFIRMATION_FOR_DESTRUCTIVE"] = self._prompt_bool("Wajibkan konfirmasi user untuk aksi berisiko tinggi?", default=True)
 
-            env_dict["MEMORY_ENABLED"] = self._prompt_bool("Enable Persistent SQLite Memory?", default=True)
-            env_dict["RATE_LIMIT_REQUESTS_PER_MINUTE"] = int(self._prompt("Rate Limit (requests per minute per user)", "15"))
-            env_dict["DAILY_BUDGET_USD"] = float(self._prompt("Daily AI Budget in USD", "5.0"))
+            env_dict["MEMORY_ENABLED"] = self._prompt_bool("Aktifkan memori persisten SQLite?", default=True)
+            env_dict["RATE_LIMIT_REQUESTS_PER_MINUTE"] = self._prompt_int("Rate Limit (maksimal request per menit per user)", default=15)
+            env_dict["DAILY_BUDGET_USD"] = self._prompt_float("Batas budget harian AI dalam USD (angka, misal: 5.0)", default=5.0)
         else:
             # Sane defaults
             env_dict["ENABLE_WEB_SEARCH"] = True
@@ -248,27 +273,29 @@ class SetupWizard:
         print(f"  Web Search: {'Enabled' if env_dict['ENABLE_WEB_SEARCH'] else 'Disabled'}")
         print(f"  GitHub:     {'Enabled' if env_dict['ENABLE_GITHUB'] else 'Disabled'}")
         print(f"  Shell:      {'Enabled' if env_dict['ALLOW_SHELL'] else 'Disabled'}")
+        print(f"  Rate Limit: {env_dict['RATE_LIMIT_REQUESTS_PER_MINUTE']} req/min")
+        print(f"  Daily Budget: ${env_dict['DAILY_BUDGET_USD']}")
         print("╰" + "─" * 46 + "╯\n")
 
-        if not non_interactive and not self._prompt_bool("Save this configuration to .env?", default=True):
-            print("Setup cancelled. No changes were saved.")
+        if not non_interactive and not self._prompt_bool("Simpan konfigurasi ini ke .env?", default=True):
+            print("Setup dibatalkan. Tidak ada file yang diubah.")
             return False
 
         # Save to .env
         self.config_manager.save_env_file(env_dict)
-        print(f"✓ Configuration saved to {self.env_path} (Permissions: 0600)")
+        print(f"✓ Konfigurasi tersimpan di {self.env_path} (Permissions: 0600)")
 
         # Verify .gitignore
         self._ensure_gitignore()
 
         print("\n" + "╭" + "─" * 46 + "╮")
-        print("│       Setup Completed Successfully           │")
+        print("│       Setup Berhasil Selesai                 │")
         print("╰" + "─" * 46 + "╯\n")
-        print("To start your agent, run:\n")
+        print("Jalankan agent dengan perintah:\n")
         print("    ./start\n")
-        print("or with Docker:\n")
+        print("atau dengan Docker:\n")
         print("    docker compose up -d\n")
-        print("Then open Telegram and send /start or /sdlc to your bot.\n")
+        print("Buka Telegram lalu kirim /start atau /sdlc ke bot Anda.\n")
 
         return True
 
