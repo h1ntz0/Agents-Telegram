@@ -51,22 +51,36 @@ cd Agents-Telegram
 ```
 
 ### 2. Run Interactive Setup Wizard
+
+<details open>
+<summary><b>🐧 Linux / macOS</b></summary>
+
 ```bash
 ./setup
 ```
-The wizard validates your environment and guides you through:
-* **Telegram Bot Token** (from [@BotFather](https://t.me/BotFather))
-* **AI Provider** (9router, DeepSeek, Anthropic, Google Gemini, OpenAI, OpenRouter, Ollama)
-* **Default AI Model** selection with live validation
-* Automated `.env` creation with secure file permissions (`chmod 600`)
+</details>
+
+<details open>
+<summary><b>🪟 Windows (PowerShell / Command Prompt)</b></summary>
+
+```powershell
+# PowerShell
+.\setup.ps1
+
+# Or Command Prompt (cmd.exe)
+setup.bat
+```
+</details>
+
+The wizard automatically checks Python 3.12+, creates `.venv`, installs dependencies, queries available models live from your provider API, and creates your `.env` configuration file.
 
 ### 3. Start the Agent
-```bash
-./start
-```
-Open Telegram, message your bot, and send `/start`!
 
-*(To stop the background daemon at any time, run `./stop`)*
+* **Linux / macOS**: `./start` *(stop with `./stop`)*
+* **Windows PowerShell**: `.\start.ps1` *(stop with `.\stop.ps1`)*
+* **Windows CMD**: `start.bat` *(stop with `stop.bat`)*
+
+Open Telegram, search for your bot, and send `/start`!
 
 ---
 
@@ -179,11 +193,11 @@ docker compose logs -f
 
 Validate connectivity, API credentials, and runtime dependencies at any time:
 
-```bash
-./doctor
-```
+* **Linux / macOS**: `./doctor`
+* **Windows PowerShell**: `.\doctor.ps1`
+* **Windows CMD**: `doctor.bat`
 
-{{ ... }}
+```text
 ✓ Operating System: Linux | Git: installed | Docker: installed
 ✓ Configuration Schema: Valid syntax and schema.
 ✓ Secret Protection (.gitignore): .env is gitignored
