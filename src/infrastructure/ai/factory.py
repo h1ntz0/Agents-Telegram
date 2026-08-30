@@ -1,0 +1,56 @@
+"""Factory for creating AI Provider instances from application configuration."""
+
+from src.domain.provider import AIProvider, ProviderType
+from src.infrastructure.ai.anthropic_provider import AnthropicProvider
+from src.infrastructure.ai.google_provider import GoogleProvider
+from src.infrastructure.ai.ollama_provider import OllamaProvider
+from src.infrastructure.ai.openai_provider import OpenAIProvider
+from src.infrastructure.ai.openrouter_provider import OpenRouterProvider
+
+
+def create_ai_provider(
+    provider_name: str,
+    api_key: str = "",
+    model: str = "",
+    base_url: str = "",
+    timeout: float = 60.0,
+) -> AIProvider:
+    """Instantiate appropriate AI Provider implementation based on provider_name."""
+    name = (provider_name or "").lower().strip()
+
+    if name in (ProviderType.OPENAI.value, "custom"):
+        return OpenAIProvider(
+            api_key=api_key,
+            model=model or "gpt-4o",
+            base_url=base_url if base_url else None,
+            timeout=timeout
+        )
+    elif name == ProviderType.ANTHROPIC.value:
+        return AnthropicProvider(
+            api_key=api_key,
+            model=model or "claude-3-5-sonnet-20241022",
+            timeout=timeout
+        )
+    elif name == ProviderType.GOOGLE.value:
+        return GoogleProvider(
+            api_key=api_key,
+            model=model or "gemini-2.0-flash",
+            timeout=timeout
+        )
+    elif name == ProviderType.OPENROUTER.value:
+        return OpenRouterProvider(
+            api_key=api_key,
+            model=model or "anthropic/claude-3.5-sonnet",
+            timeout=timeout
+        )
+    elif name == ProviderType.OLLAMA.value:
+        return OllamaProvider(
+            model=model or "llama3.2",
+            base_url=base_url if base_url else "http://localhost:11434",
+            timeout=timeout
+        )
+    else:
+        raise ValueError(
+            f"Unsupported AI Provider '{provider_name}'. "
+            f"Supported providers: {', '.join([p.value for p in ProviderType])}"
+        )

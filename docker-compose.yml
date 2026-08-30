@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  telegram-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: telegram-agent
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "python", "-m", "src", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

@@ -1,0 +1,54 @@
+app:
+  env: production
+  log_level: INFO
+  timezone: Asia/Jakarta
+  port: 8080
+
+telegram:
+  bot_token: ""
+  allowed_users: []
+  admin_users: []
+  mode: polling
+  webhook_url: ""
+  enable_private_chat: true
+  enable_group_chat: false
+
+ai:
+  provider: openai
+  api_key: ""
+  model: gpt-4o
+  base_url: ""
+  temperature: 0.2
+  max_tokens: 2048
+
+agent:
+  name: Assistant
+  personality: Professional
+  system_prompt: "You are a helpful and accurate AI assistant. You answer queries concisely and use tools when needed."
+
+tools:
+  web_search:
+    enabled: true
+  github:
+    enabled: false
+    token: ""
+    default_repo: ""
+    allow_write: false
+  filesystem:
+    enabled: true
+    root_dir: "./data"
+    read_only: true
+  shell:
+    enabled: false
+    allow_destructive: false
+  require_confirmation_for_destructive: true
+
+storage:
+  memory_enabled: true
+  provider: sqlite
+  database_path: "data/agent.db"
+  retention_days: 0
+
+security:
+  rate_limit_per_minute: 15
+  daily_budget_usd: 5.0

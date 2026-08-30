@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TelegramAgentConfig",
+  "type": "object",
+  "required": ["telegram", "ai", "agent"],
+  "properties": {
+    "app": {
+      "type": "object",
+      "properties": {
+        "env": { "type": "string", "enum": ["development", "production", "testing"], "default": "production" },
+        "log_level": { "type": "string", "enum": ["DEBUG", "INFO", "WARNING", "ERROR"], "default": "INFO" },
+        "timezone": { "type": "string", "default": "Asia/Jakarta" },
+        "port": { "type": "integer", "default": 8080 }
+      }
+    },
+    "telegram": {
+      "type": "object",
+      "required": ["bot_token"],
+      "properties": {
+        "bot_token": { "type": "string", "minLength": 10 },
+        "allowed_users": { "type": "array", "items": { "type": "integer" } },
+        "admin_users": { "type": "array", "items": { "type": "integer" } },
+        "mode": { "type": "string", "enum": ["polling", "webhook"], "default": "polling" },
+        "webhook_url": { "type": "string", "default": "" },
+        "enable_private_chat": { "type": "boolean", "default": true },
+        "enable_group_chat": { "type": "boolean", "default": false }
+      }
+    },
+    "ai": {
+      "type": "object",
+      "required": ["provider", "api_key", "model"],
+      "properties": {
+        "provider": { "type": "string", "enum": ["openai", "anthropic", "google", "openrouter", "ollama", "custom"] },
+        "api_key": { "type": "string" },
+        "model": { "type": "string" },
+        "base_url": { "type": "string", "default": "" },
+        "temperature": { "type": "number", "minimum": 0.0, "maximum": 2.0, "default": 0.2 },
+        "max_tokens": { "type": "integer", "default": 2048 }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "default": "Assistant" },
+        "personality": { "type": "string", "default": "Professional" },
+        "system_prompt": { "type": "string" }
+      }
+    },
+    "tools": {
+      "type": "object",
+      "properties": {
+        "web_search": { "type": "object", "properties": { "enabled": { "type": "boolean" } } },
+        "github": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "token": { "type": "string" },
+            "default_repo": { "type": "string" },
+            "allow_write": { "type": "boolean" }
+          }
+        },
+        "filesystem": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "root_dir": { "type": "string" },
+            "read_only": { "type": "boolean" }
+          }
+        },
+        "shell": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "allow_destructive": { "type": "boolean" }
+          }
+        },
+        "require_confirmation_for_destructive": { "type": "boolean", "default": true }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "properties": {
+        "memory_enabled": { "type": "boolean", "default": true },
+        "provider": { "type": "string", "enum": ["sqlite", "postgresql", "none"], "default": "sqlite" },
+        "database_path": { "type": "string", "default": "data/agent.db" },
+        "retention_days": { "type": "integer", "default": 0 }
+      }
+    },
+    "security": {
+      "type": "object",
+      "properties": {
+        "rate_limit_per_minute": { "type": "integer", "default": 15 },
+        "daily_budget_usd": { "type": "number", "default": 5.0 }
+      }
+    }
+  }
+}
