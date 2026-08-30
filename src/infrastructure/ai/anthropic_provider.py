@@ -52,7 +52,25 @@ class AnthropicProvider(AIProvider):
         anthropic_messages: List[Dict[str, Any]] = []
         for msg in request.messages:
             if msg.role == Role.USER:
-                anthropic_messages.append({"role": "user", "content": msg.content})
+                if msg.metadata and "image_base64" in msg.metadata:
+                    mime = msg.metadata.get("mime_type", "image/jpeg")
+                    b64 = msg.metadata["image_base64"]
+                    anthropic_messages.append({
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": mime,
+                                    "data": b64
+                                }
+                            },
+                            {"type": "text", "text": msg.content}
+                        ]
+                    })
+                else:
+                    anthropic_messages.append({"role": "user", "content": msg.content})
             elif msg.role == Role.ASSISTANT:
                 content_blocks: List[Dict[str, Any]] = []
                 if msg.content:

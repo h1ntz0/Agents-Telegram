@@ -58,10 +58,17 @@ class SqliteDatabase:
                 content TEXT NOT NULL,
                 tool_calls_json TEXT,
                 tool_responses_json TEXT,
+                metadata_json TEXT,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
             );
         """)
+
+        # Migration: Ensure metadata_json exists in messages table
+        try:
+            await self._db.execute("ALTER TABLE messages ADD COLUMN metadata_json TEXT;")
+        except Exception:
+            pass
 
         await self._db.execute("""
             CREATE TABLE IF NOT EXISTS agent_memory (
@@ -136,12 +143,20 @@ class SqliteDatabase:
                 raw_tr = json.loads(mr["tool_responses_json"])
                 tool_responses = [ToolResponse(tool_call_id=tr["tool_call_id"], name=tr["name"], content=tr["content"], is_error=tr.get("is_error", False)) for tr in raw_tr]
 
+            meta_dict = {}
+            if "metadata_json" in mr.keys() and mr["metadata_json"]:
+                try:
+                    meta_dict = json.loads(mr["metadata_json"])
+                except Exception:
+                    meta_dict = {}
+
             messages.append(Message(
                 role=Role(mr["role"]),
                 content=mr["content"],
                 tool_calls=tool_calls,
                 tool_responses=tool_responses,
-                timestamp=datetime.fromisoformat(mr["created_at"])
+                timestamp=datetime.fromisoformat(mr["created_at"]),
+                metadata=meta_dict
             ))
 
         return Session(
@@ -159,11 +174,12 @@ class SqliteDatabase:
         assert self._db is not None
         tc_json = json.dumps([{"id": tc.id, "name": tc.name, "arguments": tc.arguments} for tc in message.tool_calls]) if message.tool_calls else None
         tr_json = json.dumps([{"tool_call_id": tr.tool_call_id, "name": tr.name, "content": tr.content, "is_error": tr.is_error} for tr in message.tool_responses]) if message.tool_responses else None
+        meta_json = json.dumps(message.metadata) if message.metadata else None
 
         now_iso = message.timestamp.isoformat()
         await self._db.execute(
-            "INSERT INTO messages (session_id, user_id, role, content, tool_calls_json, tool_responses_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (session_id, user_id, message.role.value, message.content, tc_json, tr_json, now_iso)
+            "INSERT INTO messages (session_id, user_id, role, content, tool_calls_json, tool_responses_json, metadata_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (session_id, user_id, message.role.value, message.content, tc_json, tr_json, meta_json, now_iso)
         )
         await self._db.execute(
             "UPDATE sessions SET updated_at = ? WHERE session_id = ?",

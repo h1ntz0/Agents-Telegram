@@ -43,6 +43,15 @@ class GoogleProvider(AIProvider):
         for msg in request.messages:
             role = "user" if msg.role in (Role.USER, Role.TOOL) else "model"
             parts = []
+            if msg.metadata and "image_base64" in msg.metadata:
+                mime = msg.metadata.get("mime_type", "image/jpeg")
+                b64 = msg.metadata["image_base64"]
+                parts.append({
+                    "inline_data": {
+                        "mime_type": mime,
+                        "data": b64
+                    }
+                })
             if msg.content:
                 parts.append({"text": msg.content})
             for tc in msg.tool_calls:

@@ -184,7 +184,23 @@ class OpenAIProvider(AIProvider):
 
         for msg in request.messages:
             if msg.role == Role.USER:
-                openai_messages.append({"role": "user", "content": msg.content})
+                if msg.metadata and "image_base64" in msg.metadata:
+                    mime = msg.metadata.get("mime_type", "image/jpeg")
+                    b64 = msg.metadata["image_base64"]
+                    openai_messages.append({
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": msg.content},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{mime};base64,{b64}"
+                                }
+                            }
+                        ]
+                    })
+                else:
+                    openai_messages.append({"role": "user", "content": msg.content})
             elif msg.role == Role.ASSISTANT:
                 msg_dict: Dict[str, Any] = {"role": "assistant", "content": msg.content or ""}
                 if msg.tool_calls:
