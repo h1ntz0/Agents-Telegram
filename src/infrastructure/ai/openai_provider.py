@@ -1,4 +1,4 @@
-"""OpenAI and OpenAI-compatible API Provider implementation with SSE stream and standard JSON parsing."""
+"""OpenAI and OpenAI-compatible API Provider implementation with robust multi-format response handling."""
 
 import json
 from typing import Any, Dict, List, Optional
@@ -40,19 +40,70 @@ class OpenAIProvider(AIProvider):
         except Exception:
             return False
 
-    def _parse_sse_response(self, text: str) -> CompletionResponse:
-        """Parse Server-Sent Events (SSE) stream returned by gateways like 9router or SSE proxies."""
+    def _extract_response_data(self, response_text: str) -> CompletionResponse:
+        """Parse responses across standard JSON, hybrid SSE, and streaming SSE chunks."""
+        cleaned_text = response_text.strip()
+
+        # 1. Try direct JSON parsing (stripping any trailing data: [DONE] markers)
+        candidate_json = cleaned_text
+        if candidate_json.endswith("data: [DONE]"):
+            candidate_json = candidate_json[:-len("data: [DONE]")].strip()
+
+        try:
+            data = json.loads(candidate_json)
+            if isinstance(data, dict) and "choices" in data and len(data["choices"]) > 0:
+                choice = data["choices"][0]
+
+                # Format A: standard choices[0].message
+                if "message" in choice:
+                    msg_obj = choice["message"]
+                    content = msg_obj.get("content")
+                    # If content is empty or None, fallback to reasoning_content if present
+                    if not content and "reasoning_content" in msg_obj:
+                        content = msg_obj.get("reasoning_content")
+
+                    tool_calls: List[ToolCall] = []
+                    if "tool_calls" in msg_obj and msg_obj["tool_calls"]:
+                        for tc in msg_obj["tool_calls"]:
+                            fn = tc.get("function", {})
+                            args = {}
+                            try:
+                                args = json.loads(fn.get("arguments", "{}"))
+                            except Exception:
+                                args = {"raw": fn.get("arguments", "")}
+                            tool_calls.append(ToolCall(id=tc.get("id", "call"), name=fn.get("name", ""), arguments=args))
+
+                    usage_data = data.get("usage", {})
+                    usage = TokenUsage(
+                        prompt_tokens=usage_data.get("prompt_tokens", 0),
+                        completion_tokens=usage_data.get("completion_tokens", 0),
+                        total_tokens=usage_data.get("total_tokens", 0)
+                    )
+                    return CompletionResponse(content=content, tool_calls=tool_calls, usage=usage, raw_response=data)
+
+                # Format B: single chunk with choices[0].delta
+                elif "delta" in choice:
+                    delta_obj = choice["delta"]
+                    content = delta_obj.get("content") or delta_obj.get("reasoning_content")
+                    return CompletionResponse(content=content, tool_calls=[], raw_response=data)
+        except Exception:
+            pass
+
+        # 2. Fallback: Parse multi-line Server-Sent Events (SSE) data stream
         accumulated_text = []
         tool_call_chunks: Dict[int, Dict[str, Any]] = {}
         usage = TokenUsage()
         last_raw_chunk = {}
 
-        for raw_line in text.splitlines():
+        for raw_line in response_text.splitlines():
             line = raw_line.strip()
-            if not line or not line.startswith("data:"):
+            if not line:
                 continue
 
-            data_str = line[5:].strip()
+            data_str = line
+            if line.startswith("data:"):
+                data_str = line[5:].strip()
+
             if data_str == "[DONE]":
                 break
 
@@ -61,9 +112,13 @@ class OpenAIProvider(AIProvider):
                 last_raw_chunk = chunk
                 choices = chunk.get("choices", [])
                 if choices:
-                    delta = choices[0].get("delta", {})
-                    if "content" in delta and delta["content"]:
-                        accumulated_text.append(delta["content"])
+                    delta = choices[0].get("delta", {}) or choices[0].get("message", {})
+                    delta_content = delta.get("content")
+                    if not delta_content and "reasoning_content" in delta:
+                        delta_content = delta.get("reasoning_content")
+
+                    if delta_content:
+                        accumulated_text.append(delta_content)
 
                     if "tool_calls" in delta and delta["tool_calls"]:
                         for tc_delta in delta["tool_calls"]:
@@ -185,42 +240,4 @@ class OpenAIProvider(AIProvider):
                     pass
                 raise RuntimeError(f"AI Provider Error [{res.status_code}]: {error_detail}")
 
-            response_text = res.text.strip()
-
-            # Detect if response is Server-Sent Events stream (e.g. from 9router)
-            content_type = res.headers.get("content-type", "")
-            if "text/event-stream" in content_type or response_text.startswith("data:"):
-                return self._parse_sse_response(response_text)
-
-            # Otherwise, parse standard single JSON response
-            try:
-                data = res.json()
-            except Exception as e:
-                # If JSON fails, check if text has embedded data lines
-                if "data:" in response_text:
-                    return self._parse_sse_response(response_text)
-                raise RuntimeError(f"Failed to parse AI provider JSON response: {str(e)} | Response: {response_text[:200]}")
-
-            choice = data["choices"][0]
-            message_data = choice["message"]
-            content = message_data.get("content")
-
-            tool_calls: List[ToolCall] = []
-            if "tool_calls" in message_data and message_data["tool_calls"]:
-                for tc in message_data["tool_calls"]:
-                    fn = tc["function"]
-                    args = {}
-                    try:
-                        args = json.loads(fn.get("arguments", "{}"))
-                    except Exception:
-                        args = {"raw": fn.get("arguments", "")}
-                    tool_calls.append(ToolCall(id=tc["id"], name=fn["name"], arguments=args))
-
-            usage_data = data.get("usage", {})
-            usage = TokenUsage(
-                prompt_tokens=usage_data.get("prompt_tokens", 0),
-                completion_tokens=usage_data.get("completion_tokens", 0),
-                total_tokens=usage_data.get("total_tokens", 0)
-            )
-
-            return CompletionResponse(content=content, tool_calls=tool_calls, usage=usage, raw_response=data)
+            return self._extract_response_data(res.text)
