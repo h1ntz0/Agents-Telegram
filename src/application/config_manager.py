@@ -24,6 +24,7 @@ class TelegramSettings(BaseModel):
     webhook_url: str = ""
     enable_private_chat: bool = True
     enable_group_chat: bool = False
+    allow_groups: bool = False
 
 
 class AISettings(BaseModel):

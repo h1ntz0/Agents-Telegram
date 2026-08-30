@@ -3,7 +3,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import List, Set
+from typing import Any, List, Set, Union
 
 
 @dataclass
@@ -22,6 +22,25 @@ class AuthPolicy:
     admin_user_ids: Set[int] = field(default_factory=set)
     enable_private_chat: bool = True
     enable_group_chat: bool = False
+
+    def __init__(
+        self,
+        allowlist_enabled: bool = True,
+        allowed_user_ids: Any = None,
+        admin_user_ids: Any = None,
+        enable_private_chat: bool = True,
+        enable_group_chat: bool = False,
+        allow_groups: bool = False,
+    ):
+        self.allowlist_enabled = allowlist_enabled
+        self.allowed_user_ids = set(allowed_user_ids) if allowed_user_ids is not None else set()
+        self.admin_user_ids = set(admin_user_ids) if admin_user_ids is not None else set()
+        self.enable_private_chat = enable_private_chat
+        self.enable_group_chat = enable_group_chat or allow_groups
+
+    @property
+    def allow_groups(self) -> bool:
+        return self.enable_group_chat
 
     def is_authorized(self, user_id: int) -> bool:
         """Check if user has permission to interact with the bot."""

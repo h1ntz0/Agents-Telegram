@@ -93,7 +93,8 @@ async def run_agent_daemon(env_path: str = ".env") -> None:
     auth_policy = AuthPolicy(
         allowed_user_ids=config.telegram.allowed_users,
         allowlist_enabled=len(config.telegram.allowed_users) > 0,
-        allow_groups=config.telegram.allow_groups
+        enable_private_chat=config.telegram.enable_private_chat,
+        enable_group_chat=config.telegram.enable_group_chat
     )
     auth_mgr = TelegramAuthManager(policy=auth_policy)
     rate_limiter = UserRateLimiter(max_requests_per_minute=config.security.rate_limit_per_minute)
