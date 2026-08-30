@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -e
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$ROOT_DIR/.venv/bin/python" ]; then
+    PYTHON_EXEC="$ROOT_DIR/.venv/bin/python"
+else
+    PYTHON_EXEC="python3"
+fi
+export PYTHONPATH="$ROOT_DIR"
+exec "$PYTHON_EXEC" -m src.interfaces.cli.main stop "$@"
