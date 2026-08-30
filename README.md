@@ -15,11 +15,13 @@
 > **Deploy autonomous AI agents directly into Telegram with a single command.**  
 > Native tool calling, proactive cron schedules, multimodal media ingestion, live model switching, and automated multi-agent SDLC workflows.
 
-<br/>
+<p align="center">
+  <img src="assets/preview.png" alt="Telegram Agent Desktop Preview" width="58%" style="border-radius: 12px; vertical-align: middle;" />
+  &nbsp;
+  <img src="assets/mobile-preview.png" alt="Telegram Agent Mobile Multimodal Vision" width="28%" style="border-radius: 12px; vertical-align: middle;" />
+</p>
 
-<img src="assets/preview.png" alt="Telegram Agent Live Preview" width="600" style="border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.12);" />
-
-*Live preview: Interactive model selection, multi-agent SDLC progress tracking, and proactive task execution.*
+*Live preview: Interactive model switcher & SDLC workflows (left), and Telegram mobile multimodal vision & OCR analysis (right).*
 
 </div>
 

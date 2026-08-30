@@ -6,7 +6,7 @@ This guide covers prerequisites, interactive configuration, background daemon li
 
 ## 📋 Prerequisites
 
-* **Operating System**: Linux (Ubuntu 22.04+, Debian 12+, Arch), macOS 13+, or Windows WSL2.
+* **Operating System**: Linux (Ubuntu 22.04+, Debian 12+, Arch), macOS 13+, or Windows 10/11 (Native PowerShell / CMD / WSL2).
 * **Python Runtime**: Python 3.12 or higher.
 * **Database**: SQLite 3 (bundled with Python standard library).
 * **Package Manager**: `pip` and `venv` module.
@@ -14,17 +14,19 @@ This guide covers prerequisites, interactive configuration, background daemon li
 
 ---
 
-## ⚡ 1. Interactive Setup Wizard (`./setup`)
+## ⚡ 1. Interactive Setup Wizard
 
-The repository includes an automated setup wizard that creates a virtual environment, installs locked dependencies, and configures `.env`:
+The repository includes an automated setup wizard that creates a virtual environment, auto-installs dependencies, and configures `.env`:
 
 ```bash
-# 1. Clone repository
-git clone https://github.com/h1ntz0/Agents-Telegram.git
-cd Agents-Telegram
-
-# 2. Run setup executable
+# Linux / macOS
 ./setup
+
+# Windows PowerShell
+.\setup.ps1
+
+# Windows Command Prompt
+setup.bat
 ```
 
 ### What the Wizard Does:
