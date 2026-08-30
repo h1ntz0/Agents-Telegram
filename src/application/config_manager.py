@@ -66,8 +66,31 @@ class ShellToolSettings(BaseModel):
     timeout_seconds: float = 30.0
 
 
+class HttpFetchToolSettings(BaseModel):
+    enabled: bool = True
+    timeout_seconds: float = 15.0
+
+
+class ChartToolSettings(BaseModel):
+    enabled: bool = True
+
+
+class PythonSandboxToolSettings(BaseModel):
+    enabled: bool = True
+    timeout_seconds: float = 5.0
+
+
+class WeatherToolSettings(BaseModel):
+    enabled: bool = True
+    timeout_seconds: float = 12.0
+
+
 class ToolsSettings(BaseModel):
     web_search: WebSearchToolSettings = Field(default_factory=WebSearchToolSettings)
+    http_fetch: HttpFetchToolSettings = Field(default_factory=HttpFetchToolSettings)
+    chart: ChartToolSettings = Field(default_factory=ChartToolSettings)
+    python_sandbox: PythonSandboxToolSettings = Field(default_factory=PythonSandboxToolSettings)
+    weather: WeatherToolSettings = Field(default_factory=WeatherToolSettings)
     github: GitHubToolSettings = Field(default_factory=GitHubToolSettings)
     filesystem: FilesystemToolSettings = Field(default_factory=FilesystemToolSettings)
     shell: ShellToolSettings = Field(default_factory=ShellToolSettings)
@@ -185,6 +208,21 @@ class ConfigManager:
         web_cfg = WebSearchToolSettings(
             enabled=str(get_val("ENABLE_WEB_SEARCH", tools_dict.get("web_search", {}).get("enabled", True))).lower() in ("true", "1", "yes")
         )
+        http_cfg = HttpFetchToolSettings(
+            enabled=str(get_val("ENABLE_HTTP_FETCH", tools_dict.get("http_fetch", {}).get("enabled", True))).lower() in ("true", "1", "yes"),
+            timeout_seconds=float(get_val("HTTP_FETCH_TIMEOUT_SECONDS", tools_dict.get("http_fetch", {}).get("timeout_seconds", 15.0))),
+        )
+        chart_cfg = ChartToolSettings(
+            enabled=str(get_val("ENABLE_CHART", tools_dict.get("chart", {}).get("enabled", True))).lower() in ("true", "1", "yes"),
+        )
+        py_cfg = PythonSandboxToolSettings(
+            enabled=str(get_val("ENABLE_PYTHON_SANDBOX", tools_dict.get("python_sandbox", {}).get("enabled", True))).lower() in ("true", "1", "yes"),
+            timeout_seconds=float(get_val("PYTHON_SANDBOX_TIMEOUT_SECONDS", tools_dict.get("python_sandbox", {}).get("timeout_seconds", 5.0))),
+        )
+        weather_cfg = WeatherToolSettings(
+            enabled=str(get_val("ENABLE_WEATHER", tools_dict.get("weather", {}).get("enabled", True))).lower() in ("true", "1", "yes"),
+            timeout_seconds=float(get_val("WEATHER_TIMEOUT_SECONDS", tools_dict.get("weather", {}).get("timeout_seconds", 12.0))),
+        )
         github_cfg = GitHubToolSettings(
             enabled=str(get_val("ENABLE_GITHUB", tools_dict.get("github", {}).get("enabled", False))).lower() in ("true", "1", "yes"),
             token=get_val("GITHUB_TOKEN", tools_dict.get("github", {}).get("token", "")),
@@ -204,6 +242,10 @@ class ConfigManager:
 
         tools_cfg = ToolsSettings(
             web_search=web_cfg,
+            http_fetch=http_cfg,
+            chart=chart_cfg,
+            python_sandbox=py_cfg,
+            weather=weather_cfg,
             github=github_cfg,
             filesystem=fs_cfg,
             shell=shell_cfg,

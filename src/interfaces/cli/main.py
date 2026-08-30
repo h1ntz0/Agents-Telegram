@@ -15,14 +15,19 @@ from src.application.setup_wizard import SetupWizard
 from src.domain.user import AuthPolicy
 from src.infrastructure.ai.factory import create_ai_provider
 from src.infrastructure.database.sqlite_db import SqliteDatabase
+from src.infrastructure.scheduler.job_scheduler import JobScheduler
 from src.infrastructure.security.logger import configure_logging
 from src.infrastructure.security.rate_limiter import UserRateLimiter
 from src.infrastructure.telegram.adapter import TelegramAdapter
 from src.infrastructure.telegram.auth import TelegramAuthManager
+from src.infrastructure.tools.chart_tool import ChartTool
 from src.infrastructure.tools.filesystem_tool import DirectoryListTool, FileReadTool, FileWriteTool
 from src.infrastructure.tools.github_tool import GitHubTool
+from src.infrastructure.tools.http_fetch_tool import HttpFetchTool
+from src.infrastructure.tools.python_sandbox_tool import PythonSandboxTool
 from src.infrastructure.tools.registry import ToolRegistry
 from src.infrastructure.tools.shell_tool import ShellTool
+from src.infrastructure.tools.weather_tool import WeatherTool
 from src.infrastructure.tools.web_search import WebSearchTool
 
 PID_FILE = "data/agent.pid"
@@ -49,11 +54,26 @@ async def run_agent_daemon(env_path: str = ".env") -> None:
     db = SqliteDatabase(database_path=config.storage.database_path)
     await db.connect()
 
+    # Initialize Scheduler
+    scheduler = JobScheduler(db=db)
+
     # Initialize Tool Registry
     tools = ToolRegistry(require_confirmation_for_destructive=config.tools.require_confirmation_for_destructive)
 
-    if config.tools.web_search.enabled:
+    if getattr(config.tools, "web_search", None) and config.tools.web_search.enabled:
         tools.register(WebSearchTool())
+
+    if getattr(config.tools, "http_fetch", None) and config.tools.http_fetch.enabled:
+        tools.register(HttpFetchTool(timeout=config.tools.http_fetch.timeout_seconds))
+
+    if getattr(config.tools, "chart", None) and config.tools.chart.enabled:
+        tools.register(ChartTool())
+
+    if getattr(config.tools, "python_sandbox", None) and config.tools.python_sandbox.enabled:
+        tools.register(PythonSandboxTool(default_timeout=config.tools.python_sandbox.timeout_seconds))
+
+    if getattr(config.tools, "weather", None) and config.tools.weather.enabled:
+        tools.register(WeatherTool(timeout=config.tools.weather.timeout_seconds))
 
     if config.tools.github.enabled:
         tools.register(GitHubTool(
@@ -108,6 +128,7 @@ async def run_agent_daemon(env_path: str = ".env") -> None:
         tool_registry=tools,
         auth_manager=auth_mgr,
         rate_limiter=rate_limiter,
+        scheduler=scheduler,
     )
 
     # Shutdown event
@@ -119,6 +140,24 @@ async def run_agent_daemon(env_path: str = ".env") -> None:
 
     signal.signal(signal.SIGINT, handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)
+
+    # Background scheduler runner task
+    async def scheduler_background_loop():
+        logger.info("Scheduler background runner started.")
+        while not stop_event.is_set():
+            try:
+                due_jobs = await scheduler.get_due_jobs()
+                for due_job in due_jobs:
+                    asyncio.create_task(orchestrator.run_scheduled_job(due_job))
+            except Exception as e:
+                logger.error(f"Scheduler tick error: {str(e)}")
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                pass
+        logger.info("Scheduler background runner stopped.")
+
+    scheduler_task = asyncio.create_task(scheduler_background_loop())
 
     # Verify bot identity and register menu command suggestions
     try:
@@ -151,6 +190,12 @@ async def run_agent_daemon(env_path: str = ".env") -> None:
             await asyncio.sleep(0.1)
     finally:
         logger.info("Closing connections...")
+        stop_event.set()
+        scheduler_task.cancel()
+        try:
+            await scheduler_task
+        except asyncio.CancelledError:
+            pass
         await telegram.close()
         await db.close()
         if os.path.exists(PID_FILE):

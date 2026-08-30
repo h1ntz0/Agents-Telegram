@@ -18,7 +18,12 @@ class MockAIProvider(AIProvider):
         self.request_history: List[CompletionRequest] = []
 
     @property
+    def recorded_requests(self) -> List[CompletionRequest]:
+        return self.request_history
+
+    @property
     def provider_type(self) -> ProviderType:
+
         return ProviderType.OPENAI
 
     async def validate_credentials(self) -> bool:

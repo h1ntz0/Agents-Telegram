@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import Any, Callable, Coroutine, Dict, List, Optional
+from typing import Any, Callable, Coroutine, Dict, List, Optional, Tuple
 import httpx
 from src.domain.user import TelegramUser
 from src.infrastructure.telegram.formatter import split_message_chunks
@@ -15,6 +15,9 @@ DEFAULT_BOT_COMMANDS: List[Dict[str, str]] = [
     {"command": "model", "description": "Lihat atau ganti model AI aktif"},
     {"command": "agent", "description": "Ganti sub-agent persona (coder/qa/researcher)"},
     {"command": "sdlc", "description": "Jalankan 4 tahap SDLC otomatis"},
+    {"command": "schedule", "description": "Jadwalkan prompt AI / cron (e.g. /schedule every 1h Periksa bursa)"},
+    {"command": "remind", "description": "Setel pengingat waktu (e.g. /remind 10m Minum air)"},
+    {"command": "chart", "description": "Buat grafik visual & ASCII (e.g. /chart bar A,B,C 10,20,30)"},
     {"command": "status", "description": "Status kesehatan & tools sistem"},
     {"command": "settings", "description": "Lihat pengaturan & model aktif"},
     {"command": "tools", "description": "Daftar tools yang tersedia"},
@@ -25,12 +28,14 @@ DEFAULT_BOT_COMMANDS: List[Dict[str, str]] = [
 ]
 
 
+
 class TelegramAdapter:
     """Async client interfacing with the official Telegram Bot API."""
 
     def __init__(self, bot_token: str, timeout: float = 30.0):
         self.bot_token = bot_token
         self.base_url = f"https://api.telegram.org/bot{self.bot_token}"
+        self.file_base_url = f"https://api.telegram.org/file/bot{self.bot_token}"
         self.timeout = timeout
         self._is_running = False
         self._last_update_id = 0
@@ -78,6 +83,66 @@ class TelegramAdapter:
             last_name=user_data.get("last_name", ""),
             is_bot=user_data.get("is_bot", True)
         )
+
+    async def get_file(self, file_id: str) -> Dict[str, Any]:
+        """Fetch file metadata from Telegram API via getFile."""
+        url = f"{self.base_url}/getFile"
+        client = await self._get_client()
+        res = await client.get(url, params={"file_id": file_id})
+        if res.status_code != 200:
+            raise RuntimeError(f"Failed to get file info for {file_id}: HTTP {res.status_code}")
+        data = res.json()
+        if not data.get("ok"):
+            raise RuntimeError(f"Telegram getFile error: {data.get('description', 'Unknown error')}")
+        return data["result"]
+
+    async def download_file(self, file_path: str) -> bytes:
+        """Download raw file bytes using file path provided by getFile."""
+        download_url = f"{self.file_base_url}/{file_path.lstrip('/')}"
+        client = await self._get_client()
+        res = await client.get(download_url)
+        if res.status_code != 200:
+            raise RuntimeError(f"Failed to download file from {file_path}: HTTP {res.status_code}")
+        return res.content
+
+    async def download_file_by_id(self, file_id: str) -> Tuple[bytes, Dict[str, Any]]:
+        """Convenience method: get file info and download bytes in one step."""
+        file_info = await self.get_file(file_id)
+        file_path = file_info.get("file_path", "")
+        if not file_path:
+            raise RuntimeError(f"No file_path returned by Telegram for file_id {file_id}")
+        content = await self.download_file(file_path)
+        return content, file_info
+
+    async def send_photo(
+        self,
+        chat_id: int,
+        photo: str,
+        caption: Optional[str] = None,
+        reply_to_message_id: Optional[int] = None,
+    ) -> Optional[int]:
+        """Send a photo URL or file_id to a Telegram chat."""
+        url = f"{self.base_url}/sendPhoto"
+        client = await self._get_client()
+        payload: Dict[str, Any] = {
+            "chat_id": chat_id,
+            "photo": photo
+        }
+        if caption:
+            payload["caption"] = caption[:1024]
+        if reply_to_message_id:
+            payload["reply_to_message_id"] = reply_to_message_id
+
+        try:
+            res = await client.post(url, json=payload)
+            if res.status_code == 200:
+                data = res.json()
+                if data.get("ok"):
+                    return data["result"]["message_id"]
+            logger.error(f"Failed to send photo: {res.text}")
+        except Exception as e:
+            logger.error(f"Telegram send_photo error: {str(e)}")
+        return None
 
     async def get_updates(self, offset: Optional[int] = None, timeout: int = 10) -> List[Dict[str, Any]]:
         """Poll updates directly from Telegram Bot API."""

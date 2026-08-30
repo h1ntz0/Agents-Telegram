@@ -75,8 +75,28 @@ class SqliteDatabase:
             );
         """)
 
+        await self._db.execute("""
+            CREATE TABLE IF NOT EXISTS scheduled_jobs (
+                job_id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                chat_id INTEGER NOT NULL,
+                job_type TEXT NOT NULL,
+                schedule_type TEXT NOT NULL,
+                schedule_value TEXT NOT NULL,
+                prompt TEXT NOT NULL,
+                is_ai_prompt INTEGER NOT NULL DEFAULT 0,
+                next_run_at TEXT NOT NULL,
+                last_run_at TEXT,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT NOT NULL,
+                metadata_json TEXT
+            );
+        """)
+
         await self._db.execute("CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);")
         await self._db.execute("CREATE INDEX IF NOT EXISTS idx_memory_user ON agent_memory(user_id);")
+        await self._db.execute("CREATE INDEX IF NOT EXISTS idx_jobs_due ON scheduled_jobs(status, next_run_at);")
+        await self._db.execute("CREATE INDEX IF NOT EXISTS idx_jobs_user ON scheduled_jobs(user_id);")
         await self._db.commit()
 
     async def get_or_create_session(self, user_id: int, chat_id: int) -> Session:
@@ -196,3 +216,107 @@ class SqliteDatabase:
         cursor = await self._db.execute("DELETE FROM agent_memory WHERE updated_at < ?", (cutoff,))
         await self._db.commit()
         return cursor.rowcount
+
+    async def save_scheduled_job(self, job_dict: Dict[str, Any]) -> None:
+        """Insert or replace a scheduled job."""
+        assert self._db is not None
+        await self._db.execute(
+            """
+            INSERT OR REPLACE INTO scheduled_jobs (
+                job_id, user_id, chat_id, job_type, schedule_type, schedule_value,
+                prompt, is_ai_prompt, next_run_at, last_run_at, status, created_at, metadata_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                job_dict["job_id"],
+                job_dict["user_id"],
+                job_dict["chat_id"],
+                job_dict.get("job_type", "reminder"),
+                job_dict.get("schedule_type", "once"),
+                job_dict.get("schedule_value", ""),
+                job_dict["prompt"],
+                1 if job_dict.get("is_ai_prompt") else 0,
+                job_dict["next_run_at"],
+                job_dict.get("last_run_at"),
+                job_dict.get("status", "active"),
+                job_dict.get("created_at", datetime.now(timezone.utc).isoformat()),
+                json.dumps(job_dict.get("metadata", {})) if isinstance(job_dict.get("metadata"), dict) else job_dict.get("metadata_json")
+            )
+        )
+        await self._db.commit()
+
+    async def get_due_jobs(self, as_of: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Fetch all active jobs due on or before as_of ISO timestamp."""
+        assert self._db is not None
+        if as_of is None:
+            as_of = datetime.now(timezone.utc).isoformat()
+        cursor = await self._db.execute(
+            "SELECT * FROM scheduled_jobs WHERE status = 'active' AND next_run_at <= ? ORDER BY next_run_at ASC",
+            (as_of,)
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+    async def get_scheduled_job(self, job_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a single scheduled job by job_id."""
+        assert self._db is not None
+        cursor = await self._db.execute(
+            "SELECT * FROM scheduled_jobs WHERE job_id = ?",
+            (job_id,)
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def update_job_status(self, job_id: str, status: str, last_run_at: Optional[str] = None, next_run_at: Optional[str] = None) -> bool:
+        """Update job status and timestamps."""
+        assert self._db is not None
+        updates = ["status = ?"]
+        params: List[Any] = [status]
+        if last_run_at:
+            updates.append("last_run_at = ?")
+            params.append(last_run_at)
+        if next_run_at:
+            updates.append("next_run_at = ?")
+            params.append(next_run_at)
+        params.append(job_id)
+
+        cursor = await self._db.execute(
+            f"UPDATE scheduled_jobs SET {', '.join(updates)} WHERE job_id = ?",
+            params
+        )
+        await self._db.commit()
+        return cursor.rowcount > 0
+
+    async def cancel_scheduled_job(self, job_id: str, user_id: Optional[int] = None) -> bool:
+        """Cancel a job by setting status to cancelled."""
+        assert self._db is not None
+        if user_id is not None:
+            cursor = await self._db.execute(
+                "UPDATE scheduled_jobs SET status = 'cancelled' WHERE job_id = ? AND user_id = ? AND status = 'active'",
+                (job_id, user_id)
+            )
+        else:
+            cursor = await self._db.execute(
+                "UPDATE scheduled_jobs SET status = 'cancelled' WHERE job_id = ? AND status = 'active'",
+                (job_id,)
+            )
+        await self._db.commit()
+        return cursor.rowcount > 0
+
+    async def list_scheduled_jobs(self, user_id: Optional[int] = None, status: Optional[str] = None) -> List[Dict[str, Any]]:
+        """List scheduled jobs with optional filters."""
+        assert self._db is not None
+        query = "SELECT * FROM scheduled_jobs WHERE 1=1"
+        params: List[Any] = []
+        if user_id is not None:
+            query += " AND user_id = ?"
+            params.append(user_id)
+        if status is not None:
+            query += " AND status = ?"
+            params.append(status)
+        query += " ORDER BY next_run_at ASC"
+
+        cursor = await self._db.execute(query, params)
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+

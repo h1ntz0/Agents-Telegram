@@ -1,48 +1,48 @@
 <div align="center">
 
 # 🤖 Telegram Agent Platform
-### *Zero-Friction, Self-Hosted Multi-Agent AI Platform for Telegram*
+### *Self-Hosted, Multimodal Multi-Agent AI Platform for Telegram (v2.0 Big Update)*
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests: 42 Passing](https://img.shields.io/badge/tests-42%20passed%20(100%25)-brightgreen.svg)]()
+[![Tests: Passing](https://img.shields.io/badge/tests-passing%20(100%25)-brightgreen.svg)]()
 [![Code Style: Clean Architecture](https://img.shields.io/badge/architecture-Clean%20%2F%20Hexagonal-orange.svg)]()
 [![Security: OWASP Hardened](https://img.shields.io/badge/security-OWASP%20Hardened-red.svg)]()
+[![Release: v2.0](https://img.shields.io/badge/release-v2.0-blueviolet.svg)]()
 
 <br/>
 
-> **Run powerful AI agents directly in Telegram with a single command setup.**  
-> Built for developers, teams, and enthusiasts who want full control over their AI infrastructure without the complexity.
+> **Deploy autonomous AI agents directly into Telegram with a single command.**  
+> Native tool calling, proactive cron schedules, multimodal media ingestion, live model switching, and automated multi-agent SDLC workflows.
 
 <br/>
 
 <img src="assets/preview.png" alt="Telegram Agent Live Preview" width="600" style="border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.12);" />
 
-*Preview: Live bot interaction featuring dynamic model switching, Multi-Agent SDLC, and humanized responses.*
+*Live preview: Interactive model selection, multi-agent SDLC progress tracking, and proactive task execution.*
 
 </div>
 
 ---
 
-## ✨ Key Highlights
+## ⚡ What's New in v2.0
 
-| Feature | Description |
+| Capability | Description |
 | :--- | :--- |
-| ⚡ **Zero-Friction Wizard** | Clone and run `./setup`. Interactive terminal wizard validates tokens & credentials in real-time. |
-| 🌐 **Universal AI Providers** | First-class support for **9router**, **DeepSeek**, **Claude (Anthropic)**, **Google Gemini**, **OpenAI**, **OpenRouter**, and **Ollama**. |
-| 🔄 **Live Model Switching** | Switch between models on the fly directly inside Telegram chat using `/model` or interactive inline buttons. |
-| 👥 **Autonomous Multi-Agent SDLC** | Execute complete software development lifecycles (`/sdlc <feature>`) orchestrating **Planner**, **Developer**, **QA Tester**, and **Reviewer** subagents with live progress bars. |
-| 🎭 **Dynamic Subagent Personas** | Switch agent behavior on demand (`/agent coder`, `/agent researcher`, `/agent qa`, `/agent orchestrator`). |
-| 🧹 **Humanizer Engine** | Eliminates robotic AI cliches (*"Certainly!"*, *"Let's delve into"*, *"In Conclusion"*) for crisp, authentic human-style responses. |
-| 🛡️ **Enterprise-Grade Security** | SSRF protection, sliding-window rate limiting, path traversal guards, regex secret masking, and interactive confirmation for high-risk actions. |
-| 💾 **Persistent SQLite Memory** | Remembers user context and settings per-user with full session isolation. |
-| ⌨️ **Telegram Native Autocomplete** | Slash commands automatically register with Telegram (`setMyCommands`) for instant autocomplete suggestions when typing `/`. |
+| ⏰ **Proactive Cron & Reminders** | Set recurring cron tasks or one-shot reminders (`/schedule`, `/remind`). The agent proactively initiates conversations and delivers scheduled reports. |
+| 👁️ **Multimodal Media Processing** | Send images, documents, audio clips, and code snippets directly in chat. The agent handles visual inspection, OCR, and document analysis. |
+| 🧰 **Extended Tooling Suite** | Out-of-the-box support for **Python Sandbox**, **HTTP Fetcher** (SSRF-hardened), **Weather Forecasts**, **Chart Generation**, **Web Search**, **GitHub API**, and **Filesystem**. |
+| ⌨️ **Telegram Native Autocomplete** | Dynamic command registration via `setMyCommands` provides instant slash-command suggestions and menu discovery as you type `/`. |
+| 🔄 **Dynamic Model Switching** | Switch between models on the fly directly inside chat via `/model` or interactive inline keyboards across 7+ providers. |
+| 👥 **Autonomous Multi-Agent SDLC** | Run complete 4-stage software development workflows (`/sdlc <feature>`) orchestrating Planner, Developer, QA, and Reviewer subagents. |
+| 🧹 **Humanizer Engine** | Filters out boilerplate AI filler (*"Certainly!"*, *"I'd be happy to"*, *"In summary"*) for direct, crisp engineering responses. |
+| 🛡️ **OWASP-Hardened Perimeter** | SSRF blocker for RFC 1918 / cloud metadata IPs, sliding-window rate limiter, path traversal guard, and interactive confirmation for high-risk operations. |
 
 ---
 
-## 🚀 Quick Start (3 Steps)
+## 🚀 Quick Start
 
-Get your private AI agent running on Telegram in less than **2 minutes**:
+Get your agent running in under **2 minutes**:
 
 ### 1. Clone & Enter Directory
 ```bash
@@ -54,50 +54,56 @@ cd Agents-Telegram
 ```bash
 ./setup
 ```
-The wizard will automatically check your Python environment and guide you through configuration:
-* Paste your **Telegram Bot Token** (from [@BotFather](https://t.me/BotFather))
-* Choose your **AI Provider** (9router, DeepSeek, Anthropic, Google, OpenAI, etc.)
-* Select your preferred **AI Model** from the menu or type custom model names
-* Review and save to `.env` (automatically secured with `chmod 600`)
+The wizard validates your environment and guides you through:
+* **Telegram Bot Token** (from [@BotFather](https://t.me/BotFather))
+* **AI Provider** (9router, DeepSeek, Anthropic, Google Gemini, OpenAI, OpenRouter, Ollama)
+* **Default AI Model** selection with live validation
+* Automated `.env` creation with secure file permissions (`chmod 600`)
 
 ### 3. Start the Agent
 ```bash
 ./start
 ```
-Open Telegram, search for your bot, and send `/start`!
+Open Telegram, message your bot, and send `/start`!
 
-*(To stop the background agent anytime, simply run `./stop`)*
+*(To stop the background daemon at any time, run `./stop`)*
 
 ---
 
 ## 💬 Telegram Slash Commands
 
-| Command | Action | Example |
-| :--- | :--- | :--- |
-| `/start` | Start conversation & display bot runtime status | `/start` |
-| `/model` | Open interactive model picker or change model directly | `/model ds/deepseek-v4-flash` |
-| `/agent` | Switch sub-agent persona | `/agent coder` |
-| `/sdlc` | Run 4-stage autonomous SDLC pipeline | `/sdlc Build JWT auth middleware in Python` |
-| `/status` | View live uptime, active provider, model, & tools | `/status` |
-| `/settings` | Inspect current agent parameters & temperature | `/settings` |
-| `/tools` | List all registered and active tools | `/tools` |
-| `/memory` | View stored key-value memory context | `/memory` |
-| `/reset` | Clear chat history & conversation context | `/reset` |
-| `/cancel` | Cancel any pending high-risk tool action | `/cancel` |
-| `/help` | Display command cheatsheet & usage guide | `/help` |
+Slash commands auto-register with Telegram on startup for instant autocomplete menu support:
+
+| Command | Arguments | Description | Example |
+| :--- | :--- | :--- | :--- |
+| `/start` | — | Initialize session and view bot runtime status | `/start` |
+| `/model` | `[model_name]` | Open interactive model picker or switch model directly | `/model ds/deepseek-v4-flash` |
+| `/agent` | `[persona]` | Switch sub-agent persona (`orchestrator`, `coder`, `researcher`, `qa`) | `/agent coder` |
+| `/sdlc` | `<task>` | Run 4-stage autonomous development lifecycle | `/sdlc Build JWT auth middleware in Python` |
+| `/schedule` | `<cron> <prompt>` | Schedule recurring proactive task or alert | `/schedule 0 9 * * * Morning summary of tech news` |
+| `/remind` | `<time> <text>` | Set one-shot reminder notification | `/remind 30m Check server deployment logs` |
+| `/status` | — | View live uptime, active provider, model, memory, and tools | `/status` |
+| `/settings` | — | Inspect current agent parameters and temperature | `/settings` |
+| `/tools` | — | List all registered tools and their permission levels | `/tools` |
+| `/memory` | — | View stored persistent user context and preferences | `/memory` |
+| `/reset` | — | Clear conversation context and active session history | `/reset` |
+| `/cancel` | — | Abort pending high-risk action or scheduled prompt | `/cancel` |
+| `/help` | — | Display complete command reference | `/help` |
 
 ---
 
 ## 🧠 Supported AI Providers & Models
 
-Telegram Agent supports any OpenAI-compatible gateway as well as official SDK endpoints:
+Telegram Agent connects to cloud LLM APIs, local models, and unified gateway proxies:
 
 ```mermaid
 graph TD
-    User([👤 Telegram User]) <--> Bot[🤖 Telegram Bot Adapter]
-    Bot <--> Orch[🧠 Agent Orchestrator]
-    Orch <--> Sec[🛡️ Security & Humanizer]
-    Sec <--> Factory[🏭 AI Provider Factory]
+    User([👤 Telegram User]) <--> Adapter[🤖 Telegram Adapter]
+    Adapter <--> Orchestrator[🧠 Agent Orchestrator]
+    Orchestrator <--> Sched[⏰ Cron & Reminder Engine]
+    Orchestrator <--> Tools[🧰 Extended Tool Registry]
+    Orchestrator <--> Security[🛡️ Security & Humanizer]
+    Security <--> Factory[🏭 AI Provider Factory]
     Factory <--> P1[🌐 9router Gateway]
     Factory <--> P2[⚡ DeepSeek API]
     Factory <--> P3[🔮 Anthropic Claude]
@@ -106,15 +112,32 @@ graph TD
     Factory <--> P6[🦙 Ollama Local]
 ```
 
-### Provider Model Matrix
+### Provider Model Reference
 
 * **9router (Local Gateway)**: `ag/gemini-3.7-flash-high`, `ds/deepseek-v4-flash`, `ds/deepseek-chat`, `ds/deepseek-reasoner`, `ag/claude-sonnet-4-6`, `cx/gpt-5.6-sol`, `cx/gpt-5.4`
 * **DeepSeek (Official)**: `deepseek-chat` (DeepSeek-V3), `deepseek-reasoner` (DeepSeek-R1)
-* **Anthropic / Claude**: `claude-3-7-sonnet-20250219`, `claude-3-5-sonnet-20241022`, `claude-3-5-haiku-20241022`
+* **Anthropic Claude**: `claude-3-7-sonnet-20250219`, `claude-3-5-sonnet-20241022`, `claude-3-5-haiku-20241022`
 * **Google Gemini**: `gemini-2.0-flash`, `gemini-1.5-pro`, `gemini-1.5-flash`
 * **OpenAI**: `gpt-4o`, `gpt-4o-mini`, `o1`, `o3-mini`
 * **OpenRouter**: `anthropic/claude-3.5-sonnet`, `deepseek/deepseek-r1`, `openai/gpt-4o`
 * **Ollama**: `llama3.2`, `deepseek-r1`, `qwen2.5-coder`, `mistral`
+
+---
+
+## 🧰 Extended Tooling Suite (v2.0)
+
+All tools operate under strict permission boundaries and parameter sanitization:
+
+| Tool | Permission | Risk | Description |
+| :--- | :--- | :--- | :--- |
+| `web_search` | `READ` | `LOW` | Queries DuckDuckGo and sanitizes snippet outputs. |
+| `python_sandbox` | `EXECUTE` | `MEDIUM` | Runs Python scripts in an isolated process with memory/CPU constraints. |
+| `http_fetch` | `READ` | `LOW` | Fetches web pages with SSRF prevention (blocks private subnets & metadata IPs). |
+| `weather` | `READ` | `LOW` | Fetches real-time atmospheric data and multi-day meteorological forecasts. |
+| `generate_chart` | `WRITE` | `LOW` | Renders visual plots (bar, line, pie, scatter) and sends PNGs directly to chat. |
+| `file_read` / `file_write` | `READ` / `WRITE` | `LOW` / `MEDIUM` | Accesses workspace files within `FILESYSTEM_ROOT_DIR` with path jail guards. |
+| `github` | `READ` / `WRITE` | `LOW` / `MEDIUM` | Inspects repositories, tracks issues, and manages pull requests. |
+| `shell_execute` | `EXECUTE` | `HIGH` | Runs system commands; requires explicit user button confirmation. |
 
 ---
 
@@ -123,28 +146,28 @@ graph TD
 Send `/sdlc <task description>` in Telegram to trigger the 4-phase automated lifecycle:
 
 ```text
-1. 📋 PLANNER AGENT    -> Architecture breakdown & capability map
-2. 💻 DEVELOPER AGENT  -> Clean, minimal production implementation
-3. 🧪 QA & SECURITY    -> Boundary testing, injection audit & unit tests
-4. 🔍 REVIEWER AGENT   -> Synthesis, polish & Humanizer processing
+1. 📋 PLANNER AGENT    -> Architecture decomposition & technical roadmap
+2. 💻 DEVELOPER AGENT  -> Clean, modular production implementation
+3. 🧪 QA & SECURITY    -> Edge-case testing, vulnerability audit, and assertions
+4. 🔍 REVIEWER AGENT   -> Synthesis, Humanizer formatting, and final deliverable
 ```
 
-Real-time progress bars edit live in Telegram (`25%` → `50%` → `75%` → `100%`) as each subagent delivers its deliverable.
+Live progress edits update the message directly in Telegram (`25%` → `50%` → `75%` → `100%`).
 
 ---
 
 ## 🐳 Docker Deployment
 
-For 24/7 background operation on a VPS or home server:
+For 24/7 background operation on a server or VPS:
 
 ```bash
-# 1. Configure environment
+# 1. Run setup wizard to configure .env
 ./setup
 
 # 2. Start container with Docker Compose
 docker compose up -d
 
-# 3. View live logs
+# 3. Stream live logs
 docker compose logs -f
 ```
 
@@ -152,38 +175,31 @@ docker compose logs -f
 
 ## 🩺 System Diagnostics (`./doctor`)
 
-To verify connectivity, dependencies, and API endpoints at any time:
+Validate connectivity, API credentials, and runtime dependencies at any time:
 
 ```bash
 ./doctor
 ```
 
-Output:
-```text
-Running Agent Doctor Diagnostics...
-
-✓ Python Runtime: Python 3.12.3
+{{ ... }}
 ✓ Operating System: Linux | Git: installed | Docker: installed
 ✓ Configuration Schema: Valid syntax and schema.
 ✓ Secret Protection (.gitignore): .env is gitignored
 ✓ Database & Storage: SQLite accessible at data/agent.db
 ✓ Telegram Connection: Connected as @YourBot (ID: 123456789)
+✓ Slash Commands: Registered 11 commands via setMyCommands
 ✓ AI Provider: 9ROUTER (ag/gemini-3.7-flash-high) verified.
 
 ✓ All system health checks passed.
-```
 
 ---
 
-## 🧪 Automated Testing & Chaos Fuzzing
+## 🧪 Automated Testing
 
-The codebase is backed by **42 automated test suites** spanning Unit, Integration, End-to-End, and Monkey Chaos Fuzzing:
+The codebase includes automated test suites covering unit, integration, end-to-end, and chaos fuzzing:
 
 ```bash
 ./.venv/bin/pytest -v --cov=src
-```
-```text
-============================== 42 passed in 3.65s ==============================
 ```
 
 ---
@@ -192,34 +208,41 @@ The codebase is backed by **42 automated test suites** spanning Unit, Integratio
 
 ```text
 Agents-Telegram/
-├── assets/                 # Preview images & documentation media
-├── config/                 # YAML configuration schemas & defaults
-├── data/                   # SQLite database & runtime PID files (gitignored)
-├── docs/                   # Full architectural specifications
+├── assets/                 # Preview media and architecture diagrams
+├── config/                 # YAML configuration schemas and defaults
+├── data/                   # SQLite database and runtime PID files (gitignored)
+├── docs/                   # Complete architectural & integration specs
 │   ├── architecture/       # Clean architecture & layer contracts
-│   ├── integrations/       # Tool & provider extension guides
-│   └── security/           # OWASP threat model & sandboxing
-├── scripts/                # Utility & simulation runners
+│   ├── integrations/       # Tool specifications & extension guides
+│   ├── security/           # OWASP threat model & sandboxing policies
+│   └── setup/              # Setup, deployment, and operational guides
+├── scripts/                # Utility and simulation scripts
 ├── src/
-│   ├── application/        # Orchestrator, SDLC pipeline, Setup wizard, Doctor
-│   ├── domain/             # Entities (Session, Message, User, Provider, Tools)
-│   ├── infrastructure/     # AI providers (9router, DeepSeek, Claude, Gemini), DB, Security
+│   ├── application/        # Orchestrator, SDLC engine, Scheduler, Setup wizard, Doctor
+│   ├── domain/             # Core entities (Session, Message, User, Provider, Tool, Schedule)
+│   ├── infrastructure/     # AI providers, Database, Telegram adapter, Tools, Security
+│   │   ├── ai/             # Provider implementations (9router, DeepSeek, Claude, Gemini, etc.)
+│   │   ├── database/       # Async SQLite persistence (sessions, memories, schedules)
+│   │   ├── security/       # SSRF guard, rate limiter, secret scrubber, Humanizer
+│   │   ├── telegram/       # Bot API client, formatting, auth, autocomplete registration
+│   │   └── tools/          # Web search, Python sandbox, HTTP fetcher, Weather, Charts, FS, Shell
 │   └── interfaces/         # CLI parser & daemon entrypoints
-├── tests/                  # Unit, Integration, E2E, and Monkey fuzzing tests
-├── doctor                  # Executable health check tool
-├── setup                   # Executable interactive setup wizard
-├── start                   # Executable agent daemon starter
-└── stop                    # Executable agent daemon stopper
+├── tests/                  # Unit, Integration, E2E, and Chaos test suites
+├── doctor                  # System diagnostic executable
+├── setup                   # Interactive setup wizard executable
+├── start                   # Agent daemon starter executable
+└── stop                    # Agent daemon stopper executable
 ```
 
 ---
 
 ## 🔒 Security & Privacy
 
-* **Zero Cloud Lock-in**: All user memories and chat histories are stored locally in SQLite (`data/agent.db`).
-* **Strict Secrets Protection**: `.env` is created with `chmod 600` and automatically added to `.gitignore`.
-* **Safe Sandbox**: File operations are restricted to root directories; shell commands require explicit confirmation.
-* **SSRF Guard**: Prohibits requests to private RFC 1918 subnets and cloud metadata IPs (`169.254.169.254`).
+* **Local Data Sovereignty**: All chat history, memories, and schedules reside in local SQLite (`data/agent.db`).
+* **Strict Secret Isolation**: `.env` is created with `chmod 600` and permanently excluded via `.gitignore`.
+* **SSRF Guard**: Blocks outbound requests to RFC 1918 private subnets and cloud metadata endpoints (`169.254.169.254`).
+* **Safe Sandboxing**: File operations are jailed to designated directories; shell commands require explicit confirmation.
+* **Rate Limiting**: Sliding-window limiter prevents API abuse and denial-of-service attempts.
 
 ---
 
