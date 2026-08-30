@@ -9,9 +9,9 @@ BANNED_INTRO_PATTERNS = [
     re.compile(r"^(tentu saja|baiklah|sebagai ai|mari kita telusuri|mari kita selami|berikut ini adalah|berikut adalah)[\s,:!-]*", re.IGNORECASE),
 ]
 
-# Blacklisted unprompted summary headers
+# Blacklisted unprompted summary headers (matches newline, space, or markdown header boundary)
 BANNED_SUMMARY_HEADERS = [
-    re.compile(r"\n+(#+\s*(Conclusion|Summary|Overall|In Conclusion|Wrap-up|Secara Keseluruhan|Kesimpulan)[\s\S]*$)", re.IGNORECASE),
+    re.compile(r"(\n+|\s+|^)(#+\s*|\*{1,3}\s*)?(Conclusion|Summary|Overall|In Conclusion|Wrap-up|Secara Keseluruhan|Kesimpulan)[:\s][\s\S]*$", re.IGNORECASE),
 ]
 
 # Blacklisted AI buzzwords and their clean replacements
@@ -41,7 +41,11 @@ def humanize_response(text: str) -> str:
 
     cleaned = text.strip()
 
-    # 1. Strip all chained robotic greeting preambles
+    # 1. Strip unprompted closing conclusions
+    for pattern in BANNED_SUMMARY_HEADERS:
+        cleaned = pattern.sub("", cleaned).strip()
+
+    # 2. Strip all chained robotic greeting preambles
     changed = True
     while changed:
         changed = False
@@ -50,10 +54,6 @@ def humanize_response(text: str) -> str:
             if new_cleaned != cleaned:
                 cleaned = new_cleaned
                 changed = True
-
-    # 2. Strip unprompted closing conclusions
-    for pattern in BANNED_SUMMARY_HEADERS:
-        cleaned = pattern.sub("", cleaned).strip()
 
     # 3. Replace high-frequency AI slop words
     for pattern, replacement in BUZZWORD_REPLACEMENTS:
