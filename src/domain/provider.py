@@ -10,9 +10,11 @@ from src.domain.tool import ToolDefinition
 
 
 class ProviderType(str, Enum):
-    OPENAI = "openai"
+    NINE_ROUTER = "9router"
+    DEEPSEEK = "deepseek"
     ANTHROPIC = "anthropic"
     GOOGLE = "google"
+    OPENAI = "openai"
     OPENROUTER = "openrouter"
     OLLAMA = "ollama"
     CUSTOM = "custom"

@@ -1,4 +1,4 @@
-"""Central Agent Orchestrator handling message routing, ReAct loop, tool dispatch, and confirmation gates."""
+"""Central Agent Orchestrator handling message routing, ReAct loop, multi-agent SDLC delegation, and Humanizer output."""
 
 import asyncio
 import json
@@ -6,9 +6,11 @@ import logging
 import uuid
 from typing import Any, Dict, Optional
 from src.application.config_manager import RootConfig
+from src.application.multiagent_sdlc import MultiAgentSDLC
 from src.domain.agent import AgentState, Message, PendingConfirmation, Role, Session, ToolCall, ToolResponse
 from src.domain.provider import AIProvider, CompletionRequest
 from src.infrastructure.database.sqlite_db import SqliteDatabase
+from src.infrastructure.security.humanizer import humanize_response
 from src.infrastructure.security.rate_limiter import UserRateLimiter
 from src.infrastructure.telegram.adapter import TelegramAdapter
 from src.infrastructure.telegram.auth import TelegramAuthManager
@@ -16,9 +18,16 @@ from src.infrastructure.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
 
+SUBAGENT_PERSONAS = {
+    "orchestrator": "You are the Lead Coordinator Agent. You oversee task decomposition and synthesize inputs from specialized agents.",
+    "researcher": "You are the Research & Discovery Agent. Search the web, summarize technical docs, and provide verifiable facts.",
+    "coder": "You are the Senior Software Engineer Agent. Write clean, working, minimal production code.",
+    "qa": "You are the QA & Security Agent. Check for boundary conditions, security vulnerabilities, and verify test assertions.",
+}
+
 
 class AgentOrchestrator:
-    """Orchestrates agent execution flow between Telegram, AI provider, tools, and SQLite persistence."""
+    """Orchestrates agent execution flow between Telegram, AI provider, tools, SQLite persistence, and Multi-Agent SDLC."""
 
     def __init__(
         self,
@@ -37,7 +46,9 @@ class AgentOrchestrator:
         self.tools = tool_registry
         self.auth = auth_manager
         self.rate_limiter = rate_limiter
+        self.sdlc = MultiAgentSDLC(ai_provider=ai_provider, tool_registry=tool_registry)
         self._pending_actions: Dict[str, PendingConfirmation] = {}
+        self._user_active_persona: Dict[int, str] = {}
 
     async def handle_message(self, message_data: Dict[str, Any]) -> None:
         """Process incoming Telegram message."""
@@ -73,14 +84,17 @@ class AgentOrchestrator:
         await self._process_user_prompt(chat_id, user_id, text)
 
     async def _handle_command(self, chat_id: int, user_id: int, command_text: str) -> None:
-        """Route standard Telegram slash commands."""
-        cmd = command_text.split()[0].lower()
+        """Route standard Telegram slash commands and multi-agent workflows."""
+        parts = command_text.split(maxsplit=1)
+        cmd = parts[0].lower()
+        args = parts[1].strip() if len(parts) > 1 else ""
 
         if cmd == "/start":
             msg = (
                 f"Hello! I am {self.config.agent.name}.\n\n"
                 f"Status: Online\n"
-                f"Provider: {self.config.ai.provider.upper()} ({self.config.ai.model})\n\n"
+                f"Provider: {self.config.ai.provider.upper()} ({self.config.ai.model})\n"
+                f"Active Agent Persona: {self._user_active_persona.get(user_id, 'orchestrator').upper()}\n\n"
                 "Send me any task or question. Type /help to view available commands."
             )
             await self.telegram.send_message(chat_id, msg)
@@ -90,7 +104,9 @@ class AgentOrchestrator:
                 "Available Commands:\n"
                 "/start - Bot status and greeting\n"
                 "/help - Show this guide\n"
-                "/status - Runtime health and configuration overview\n"
+                "/status - Runtime health, memory, and provider status\n"
+                "/agent [orchestrator|researcher|coder|qa] - Switch sub-agent persona\n"
+                "/sdlc <feature_description> - Run full Multi-Agent SDLC pipeline\n"
                 "/settings - Active AI model and agent persona\n"
                 "/tools - List enabled tools and permission levels\n"
                 "/memory - View stored memory entries for this session\n"
@@ -99,12 +115,33 @@ class AgentOrchestrator:
             )
             await self.telegram.send_message(chat_id, help_text)
 
+        elif cmd == "/agent":
+            if not args:
+                cur = self._user_active_persona.get(user_id, "orchestrator")
+                avail = ", ".join(SUBAGENT_PERSONAS.keys())
+                await self.telegram.send_message(chat_id, f"Current Agent Persona: {cur}\nAvailable: {avail}\nUsage: /agent <name>")
+                return
+            target = args.lower()
+            if target in SUBAGENT_PERSONAS:
+                self._user_active_persona[user_id] = target
+                await self.telegram.send_message(chat_id, f"Switched to {target.upper()} agent persona.")
+            else:
+                await self.telegram.send_message(chat_id, f"Unknown agent persona '{target}'. Options: {', '.join(SUBAGENT_PERSONAS.keys())}")
+
+        elif cmd == "/sdlc":
+            if not args:
+                await self.telegram.send_message(chat_id, "Usage: /sdlc <describe the feature or task to build>")
+                return
+            await self._run_sdlc_flow(chat_id, user_id, args)
+
         elif cmd == "/status":
+            cur_persona = self._user_active_persona.get(user_id, "orchestrator")
             status_text = (
                 f"Agent Status: RUNNING\n"
                 f"Telegram: CONNECTED\n"
                 f"AI Provider: {self.config.ai.provider}\n"
                 f"Model: {self.config.ai.model}\n"
+                f"Active Persona: {cur_persona.upper()}\n"
                 f"Memory: {'Enabled' if self.config.storage.memory_enabled else 'Disabled'}\n"
                 f"Active Tools: {len(self.tools.list_definitions())}"
             )
@@ -158,6 +195,32 @@ class AgentOrchestrator:
         else:
             await self.telegram.send_message(chat_id, f"Unknown command '{cmd}'. Type /help for assistance.")
 
+    async def _run_sdlc_flow(self, chat_id: int, user_id: int, feature_description: str) -> None:
+        """Run Multi-Agent SDLC sequence with live progress edits."""
+        status_msg_ids = await self.telegram.send_message(chat_id, "Starting Multi-Agent SDLC execution...")
+        status_msg_id = status_msg_ids[0] if status_msg_ids else None
+
+        async def update_progress(text: str, percentage: int):
+            if status_msg_id:
+                await self.telegram.edit_message_text(chat_id, status_msg_id, text)
+
+        try:
+            result = await self.sdlc.execute_feature_lifecycle(
+                feature_description=feature_description,
+                user_id=user_id,
+                progress_callback=update_progress
+            )
+            report = (
+                f"Multi-Agent SDLC Completed: {feature_description}\n\n"
+                f"--- 1. SPECIFICATION (Planner) ---\n{result.plan_output}\n\n"
+                f"--- 2. IMPLEMENTATION (Developer) ---\n{result.code_output}\n\n"
+                f"--- 3. VERIFICATION (QA) ---\n{result.qa_output}"
+            )
+            await self.telegram.send_message(chat_id, report)
+        except Exception as e:
+            logger.error(f"SDLC Error: {str(e)}")
+            await self.telegram.send_message(chat_id, f"Multi-Agent SDLC Error: {str(e)}")
+
     async def handle_callback_query(self, callback_data: Dict[str, Any]) -> None:
         """Handle inline button clicks for destructive tool confirmations."""
         query_id = callback_data.get("id", "")
@@ -185,7 +248,8 @@ class AgentOrchestrator:
 
             # Execute the confirmed tool
             res = await self.tools.execute(pending.tool_name, pending.arguments, user_id=user_id)
-            await self.telegram.send_message(chat_id, f"Execution Result:\n{res.content}")
+            clean_res = humanize_response(res.content)
+            await self.telegram.send_message(chat_id, f"Execution Result:\n{clean_res}")
 
         elif data_str.startswith("cancel:"):
             action_id = data_str.split(":", 1)[1]
@@ -195,7 +259,7 @@ class AgentOrchestrator:
             await self.telegram.edit_message_text(chat_id, message_id, "Operation was cancelled.")
 
     async def _process_user_prompt(self, chat_id: int, user_id: int, prompt_text: str) -> None:
-        """Execute ReAct loop with tool resolution and multi-turn persistence."""
+        """Execute ReAct loop with tool resolution, multi-turn persistence, and humanized output."""
         await self.telegram.send_chat_action(chat_id, "typing")
 
         session = await self.db.get_or_create_session(user_id, chat_id)
@@ -203,12 +267,16 @@ class AgentOrchestrator:
         session.add_message(user_message)
         await self.db.save_message(session.session_id, user_id, user_message)
 
+        # Get active subagent persona or default orchestrator
+        cur_persona = self._user_active_persona.get(user_id, "orchestrator")
+        persona_prompt = SUBAGENT_PERSONAS.get(cur_persona, self.config.agent.system_prompt)
+
         # Build dynamic system prompt with memory context
         memories = await self.db.get_memories(user_id)
-        sys_prompt = self.config.agent.system_prompt
+        sys_prompt = f"{persona_prompt}\nTone: Direct, authentic, no robotic preambles."
         if memories:
             mem_summary = "\n".join(f"- {k}: {v}" for k, v in memories.items())
-            sys_prompt += f"\n\nKnown information about user:\n{mem_summary}"
+            sys_prompt += f"\n\nKnown context about user:\n{mem_summary}"
 
         tool_defs = self.tools.list_definitions()
         max_turns = 5
@@ -288,10 +356,12 @@ class AgentOrchestrator:
                 continue
 
             # Case B: AI generated direct text response
-            final_content = ai_response.content or "No response generated."
-            assistant_msg = Message(role=Role.ASSISTANT, content=final_content)
+            raw_content = ai_response.content or "No response generated."
+            clean_content = humanize_response(raw_content)
+
+            assistant_msg = Message(role=Role.ASSISTANT, content=clean_content)
             session.add_message(assistant_msg)
             await self.db.save_message(session.session_id, user_id, assistant_msg)
 
-            await self.telegram.send_message(chat_id, final_content)
+            await self.telegram.send_message(chat_id, clean_content)
             break

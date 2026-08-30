@@ -1,4 +1,4 @@
-"""Interactive Setup Wizard with live API verification, progressive disclosure, and safe secret handling."""
+"""Interactive Setup Wizard with live API verification, progressive disclosure, and multi-provider support."""
 
 import getpass
 import os
@@ -130,29 +130,43 @@ class SetupWizard:
 
         # Step 3: AI Provider Configuration & Live Validation
         print("\nStep [3/6] AI Provider Configuration")
-        providers = ["openai", "anthropic", "google", "openrouter", "ollama", "custom"]
-        cur_prov = existing_cfg.ai.provider if existing_cfg and existing_cfg.ai.provider in providers else "openai"
+        providers = ["9router", "deepseek", "anthropic", "google", "openai", "openrouter", "ollama", "custom"]
+        cur_prov = existing_cfg.ai.provider if existing_cfg and existing_cfg.ai.provider in providers else "9router"
         provider = self._prompt_choice("Select AI Provider", providers, default_idx=providers.index(cur_prov))
         env_dict["AI_PROVIDER"] = provider
 
         default_model_map = {
-            "openai": "gpt-4o",
+            "9router": "claude-3-5-sonnet-20241022",
+            "deepseek": "deepseek-chat",
             "anthropic": "claude-3-5-sonnet-20241022",
             "google": "gemini-2.0-flash",
+            "openai": "gpt-4o",
             "openrouter": "anthropic/claude-3.5-sonnet",
             "ollama": "llama3.2",
             "custom": "custom-model"
         }
 
         base_url = ""
-        if provider == "custom":
+        if provider == "9router":
+            default_9r_url = existing_cfg.ai.base_url if (existing_cfg and existing_cfg.ai.base_url) else "http://localhost:20128/v1"
+            base_url = self._prompt("9router Gateway URL", default_9r_url)
+            env_dict["AI_BASE_URL"] = base_url
+        elif provider == "deepseek":
+            default_ds_url = existing_cfg.ai.base_url if (existing_cfg and existing_cfg.ai.base_url) else "https://api.deepseek.com/v1"
+            base_url = self._prompt("DeepSeek API URL", default_ds_url)
+            env_dict["AI_BASE_URL"] = base_url
+        elif provider == "custom":
             base_url = self._prompt("Custom OpenAI-compatible Base URL (e.g. http://localhost:8000/v1)", existing_cfg.ai.base_url if existing_cfg else "")
             env_dict["AI_BASE_URL"] = base_url
 
         while True:
-            if provider != "ollama":
+            if provider not in ("ollama", "9router"):
                 default_key = existing_cfg.ai.api_key if existing_cfg else ""
                 api_key = self._prompt_secret(f"{provider.upper()} API Key", default_key)
+                env_dict["AI_API_KEY"] = api_key
+            elif provider == "9router":
+                default_key = existing_cfg.ai.api_key if existing_cfg else "9router-local"
+                api_key = self._prompt("9router API Key (optional for local instance)", default_key)
                 env_dict["AI_API_KEY"] = api_key
             else:
                 api_key = ""
@@ -171,17 +185,19 @@ class SetupWizard:
                     break
                 else:
                     print(f"✗ Verification warning: Could not validate credentials with {provider.upper()}.")
-                    if not self._prompt_bool("Would you like to re-enter your API key?", default=True):
-                        break
-            except Exception as e:
-                print(f"✗ Verification error: {str(e)}")
-                if not self._prompt_bool("Would you like to re-enter your API key?", default=True):
+                    if not self._prompt_bool("Would you like to continue anyway?", default=True):
+                        continue
                     break
+            except Exception as e:
+                print(f"✗ Verification note: {str(e)}")
+                if not self._prompt_bool("Would you like to continue anyway?", default=True):
+                    continue
+                break
 
         # Step 4: Agent Persona
         print("\nStep [4/6] Agent Persona")
         env_dict["AGENT_NAME"] = self._prompt("Agent Name", existing_cfg.agent.name if existing_cfg else "Personal Assistant")
-        env_dict["AGENT_PERSONALITY"] = self._prompt("Agent Tone / Personality", existing_cfg.agent.personality if existing_cfg else "Professional")
+        env_dict["AGENT_PERSONALITY"] = self._prompt("Agent Tone / Personality", existing_cfg.agent.personality if existing_cfg else "Direct & Helpful")
         env_dict["AGENT_SYSTEM_PROMPT"] = self._prompt(
             "System Prompt",
             existing_cfg.agent.system_prompt if existing_cfg else "You are a helpful and accurate AI assistant. You answer queries concisely and use tools when needed."
@@ -189,7 +205,7 @@ class SetupWizard:
 
         # Step 5: Advanced Preferences & Integrations
         if not advanced and not non_interactive:
-            advanced = self._prompt_bool("Configure advanced settings (Tools, GitHub, Memory, Security)?", default=False)
+            advanced = self._prompt_bool("Configure advanced settings (Multi-Agent, Tools, GitHub, Memory)?", default=False)
 
         if advanced:
             print("\nStep [5/6] Advanced Integrations & Security")
@@ -252,7 +268,7 @@ class SetupWizard:
         print("    ./start\n")
         print("or with Docker:\n")
         print("    docker compose up -d\n")
-        print("Then open Telegram and send /start to your bot.\n")
+        print("Then open Telegram and send /start or /sdlc to your bot.\n")
 
         return True
 

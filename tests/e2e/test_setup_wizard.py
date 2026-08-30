@@ -15,10 +15,10 @@ async def test_setup_wizard_e2e(tmp_path):
 
     inputs = [
         "1001, 1002",         # Allowed Telegram users
-        "2",                  # Provider choice (anthropic)
+        "3",                  # Provider choice (3 = anthropic)
         "claude-3-5-sonnet",  # Model
         "My Bot",             # Agent Name
-        "Friendly",           # Personality
+        "Direct & Helpful",   # Personality
         "Helpful prompt",     # System Prompt
         "n",                  # Configure advanced? (n)
         "y"                   # Save configuration? (y)
