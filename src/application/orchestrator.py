@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from src.application.config_manager import RootConfig
 from src.application.multiagent_sdlc import MultiAgentSDLC
 from src.domain.agent import AgentState, Message, PendingConfirmation, Role, Session, ToolCall, ToolResponse
-from src.domain.provider import AIProvider, CompletionRequest
+from src.domain.provider import AIProvider, CompletionRequest, PROVIDER_MODELS_CATALOG
 from src.infrastructure.database.sqlite_db import SqliteDatabase
 from src.infrastructure.security.humanizer import humanize_response
 from src.infrastructure.security.rate_limiter import UserRateLimiter
@@ -24,16 +24,6 @@ SUBAGENT_PERSONAS = {
     "coder": "You are the Senior Software Engineer Agent. Write clean, working, minimal production code.",
     "qa": "You are the QA & Security Agent. Check for boundary conditions, security vulnerabilities, and verify test assertions.",
 }
-
-QUICK_MODELS = [
-    "ag/gemini-3.7-flash-high",
-    "ag/claude-3.7-sonnet",
-    "deepseek-chat",
-    "deepseek-reasoner",
-    "gpt-4o",
-    "claude-3-5-sonnet-20241022",
-    "gemini-2.0-flash",
-]
 
 
 class AgentOrchestrator:
@@ -60,6 +50,25 @@ class AgentOrchestrator:
         self._pending_actions: Dict[str, PendingConfirmation] = {}
         self._user_active_persona: Dict[int, str] = {}
         self._user_active_model: Dict[int, str] = {}
+
+    async def _get_user_model(self, user_id: int) -> str:
+        """Retrieve user's chosen model from runtime cache or SQLite persistence."""
+        if user_id in self._user_active_model:
+            return self._user_active_model[user_id]
+
+        memories = await self.db.get_memories(user_id)
+        saved_model = memories.get("_active_model")
+        if saved_model:
+            self._user_active_model[user_id] = saved_model
+            return saved_model
+
+        return self.config.ai.model
+
+    async def _set_user_model(self, user_id: int, model_name: str) -> None:
+        """Update user's chosen model in runtime cache and SQLite persistence."""
+        clean_name = model_name.strip()
+        self._user_active_model[user_id] = clean_name
+        await self.db.set_memory(user_id, "_active_model", clean_name)
 
     async def handle_message(self, message_data: Dict[str, Any]) -> None:
         """Process incoming Telegram message."""
@@ -100,18 +109,19 @@ class AgentOrchestrator:
         cmd = parts[0].lower()
         args = parts[1].strip() if len(parts) > 1 else ""
 
-        active_model = self._user_active_model.get(user_id, self.config.ai.model)
+        active_model = await self._get_user_model(user_id)
         active_persona = self._user_active_persona.get(user_id, "orchestrator")
+        provider_name = self.config.ai.provider.lower()
 
         if cmd == "/start":
             msg = (
                 f"Hello! I am {self.config.agent.name}.\n\n"
                 f"Status: Online\n"
-                f"Provider: {self.config.ai.provider.upper()}\n"
+                f"Active Provider: {provider_name.upper()}\n"
                 f"Active Model: {active_model}\n"
                 f"Active Persona: {active_persona.upper()}\n\n"
                 "Commands:\n"
-                "/model - Change active AI model\n"
+                "/model - View or change active AI model\n"
                 "/agent - Switch sub-agent persona\n"
                 "/sdlc <task> - Run full 4-stage SDLC\n"
                 "/help - View all commands"
@@ -135,21 +145,23 @@ class AgentOrchestrator:
 
         elif cmd == "/model":
             if args:
-                self._user_active_model[user_id] = args
-                await self.telegram.send_message(chat_id, f"✓ Active model switched to: {args}")
+                await self._set_user_model(user_id, args)
+                await self.telegram.send_message(chat_id, f"✓ Active model for {provider_name.upper()} switched to: {args}")
                 return
 
-            # Render model picker keyboard
+            # Render provider-specific model picker keyboard
+            catalog_models = PROVIDER_MODELS_CATALOG.get(provider_name, [])
             buttons: List[List[Dict[str, str]]] = []
-            for m in QUICK_MODELS:
+            for m in catalog_models:
                 buttons.append([{"text": f"Select {m}", "callback_data": f"set_model:{m}"}])
 
-            markup = {"inline_keyboard": buttons}
+            markup = {"inline_keyboard": buttons} if buttons else None
             msg = (
-                f"Current Active Model: {active_model}\n\n"
-                "Click a model below or type:\n"
+                f"Active Provider: {provider_name.upper()}\n"
+                f"Current Model: {active_model}\n\n"
+                "Click a model button below or type:\n"
                 "  /model <model_name>\n"
-                "Example: /model ag/gemini-3.7-flash-high"
+                "Contoh: /model ag/gemini-3.7-flash-high"
             )
             await self.telegram.send_message(chat_id, msg, reply_markup=markup)
 
@@ -176,7 +188,7 @@ class AgentOrchestrator:
             status_text = (
                 f"Agent Status: RUNNING\n"
                 f"Telegram: CONNECTED\n"
-                f"AI Provider: {self.config.ai.provider}\n"
+                f"Provider: {provider_name.upper()}\n"
                 f"Active Model: {active_model}\n"
                 f"Active Persona: {active_persona.upper()}\n"
                 f"Memory: {'Enabled' if self.config.storage.memory_enabled else 'Disabled'}\n"
@@ -189,8 +201,8 @@ class AgentOrchestrator:
                 f"Settings Overview:\n"
                 f"- Name: {self.config.agent.name}\n"
                 f"- Personality: {self.config.agent.personality}\n"
-                f"- AI Provider: {self.config.ai.provider}\n"
-                f"- Model: {active_model}\n"
+                f"- AI Provider: {provider_name.upper()}\n"
+                f"- Active Model: {active_model}\n"
                 f"- Temperature: {self.config.ai.temperature}"
             )
             await self.telegram.send_message(chat_id, settings_text)
@@ -212,7 +224,10 @@ class AgentOrchestrator:
                 return
             lines = ["Stored Memories:"]
             for k, v in memories.items():
-                lines.append(f"• {k}: {v}")
+                if not k.startswith("_"):  # Hide internal state keys like _active_model
+                    lines.append(f"• {k}: {v}")
+            if len(lines) == 1:
+                lines.append("(empty)")
             await self.telegram.send_message(chat_id, "\n".join(lines))
 
         elif cmd == "/reset":
@@ -273,7 +288,7 @@ class AgentOrchestrator:
 
         if data_str.startswith("set_model:"):
             new_model = data_str.split(":", 1)[1]
-            self._user_active_model[user_id] = new_model
+            await self._set_user_model(user_id, new_model)
             await self.telegram.answer_callback_query(query_id, f"Model set to {new_model}")
             await self.telegram.edit_message_text(chat_id, message_id, f"✓ Active model switched to: {new_model}")
 
@@ -302,7 +317,7 @@ class AgentOrchestrator:
             await self.telegram.edit_message_text(chat_id, message_id, "Operation was cancelled.")
 
     async def _process_user_prompt(self, chat_id: int, user_id: int, prompt_text: str) -> None:
-        """Execute ReAct loop with tool resolution, dynamic session model, and humanized output."""
+        """Execute ReAct loop with tool resolution, exact chosen session model, and humanized output."""
         await self.telegram.send_chat_action(chat_id, "typing")
 
         session = await self.db.get_or_create_session(user_id, chat_id)
@@ -310,22 +325,24 @@ class AgentOrchestrator:
         session.add_message(user_message)
         await self.db.save_message(session.session_id, user_id, user_message)
 
-        # Get active subagent persona and active model
+        # Get active subagent persona and exact active model for this user
         cur_persona = self._user_active_persona.get(user_id, "orchestrator")
-        cur_model = self._user_active_model.get(user_id, self.config.ai.model)
+        cur_model = await self._get_user_model(user_id)
         persona_prompt = SUBAGENT_PERSONAS.get(cur_persona, self.config.agent.system_prompt)
 
         # Build dynamic system prompt with memory context
         memories = await self.db.get_memories(user_id)
         sys_prompt = f"{persona_prompt}\nTone: Direct, authentic, no robotic preambles."
         if memories:
-            mem_summary = "\n".join(f"- {k}: {v}" for k, v in memories.items())
-            sys_prompt += f"\n\nKnown context about user:\n{mem_summary}"
+            clean_mems = [f"- {k}: {v}" for k, v in memories.items() if not k.startswith("_")]
+            if clean_mems:
+                sys_prompt += f"\n\nKnown context about user:\n" + "\n".join(clean_mems)
 
         tool_defs = self.tools.list_definitions()
         max_turns = 5
 
         for _ in range(max_turns):
+            # Send the exact user-selected model in the request
             req = CompletionRequest(
                 messages=session.messages,
                 system_prompt=sys_prompt,

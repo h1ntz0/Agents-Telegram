@@ -1,4 +1,4 @@
-"""Domain interface and contracts for AI Model Providers."""
+"""Domain interface, contracts, and model catalog for AI Providers."""
 
 from __future__ import annotations
 from abc import ABC, abstractmethod
@@ -18,6 +18,57 @@ class ProviderType(str, Enum):
     OPENROUTER = "openrouter"
     OLLAMA = "ollama"
     CUSTOM = "custom"
+
+
+PROVIDER_MODELS_CATALOG: Dict[str, List[str]] = {
+    "9router": [
+        "ag/gemini-3.7-flash-high",
+        "ag/claude-3.7-sonnet",
+        "claude-3-5-sonnet-20241022",
+        "claude-3-7-sonnet-20250219",
+        "deepseek-chat",
+        "deepseek-reasoner",
+        "gpt-4o",
+        "gemini-2.0-flash",
+    ],
+    "deepseek": [
+        "deepseek-chat",
+        "deepseek-reasoner",
+        "deepseek-coder",
+    ],
+    "anthropic": [
+        "claude-3-7-sonnet-20250219",
+        "claude-3-5-sonnet-20241022",
+        "claude-3-5-haiku-20241022",
+        "claude-3-opus-20240229",
+    ],
+    "google": [
+        "gemini-2.0-flash",
+        "gemini-1.5-pro",
+        "gemini-1.5-flash",
+    ],
+    "openai": [
+        "gpt-4o",
+        "gpt-4o-mini",
+        "o1",
+        "o3-mini",
+    ],
+    "openrouter": [
+        "anthropic/claude-3.5-sonnet",
+        "deepseek/deepseek-r1",
+        "deepseek/deepseek-chat",
+        "openai/gpt-4o",
+        "google/gemini-2.0-flash-001",
+        "meta-llama/llama-3.3-70b-instruct",
+    ],
+    "ollama": [
+        "llama3.2",
+        "deepseek-r1",
+        "qwen2.5-coder",
+        "mistral",
+    ],
+    "custom": []
+}
 
 
 @dataclass
@@ -54,7 +105,7 @@ class AIProvider(ABC):
 
     @abstractmethod
     async def generate_response(self, request: CompletionRequest) -> CompletionResponse:
-        """Generate response from LLM given conversation context and tools."""
+        """Generate response from LLM given conversation context, tools, and exact requested model."""
         pass
 
     @abstractmethod
