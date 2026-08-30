@@ -17,6 +17,9 @@ class ProviderType(str, Enum):
     OPENAI = "openai"
     OPENROUTER = "openrouter"
     OLLAMA = "ollama"
+    OPENCODE_ZEN = "opencode-zen"
+    OPENCODE_GO = "opencode-go"
+    OPENCODE = "opencode"
     CUSTOM = "custom"
 
 
@@ -66,6 +69,28 @@ PROVIDER_MODELS_CATALOG: Dict[str, List[str]] = {
         "deepseek-r1",
         "qwen2.5-coder",
         "mistral",
+    ],
+    "opencode-zen": [
+        "muse-spark-1.2-contributor-free",
+        "oc/mimo-v2.5-free",
+        "oc/big-pickle",
+        "oc/hy3-free",
+        "zen-code-1",
+        "zen-instruct-preview",
+    ],
+    "opencode-go": [
+        "go-code-fast",
+        "go-flash",
+        "go-sonnet",
+        "go-chat",
+        "go-coder-preview",
+    ],
+    "opencode": [
+        "muse-spark-1.2-contributor-free",
+        "oc/mimo-v2.5-free",
+        "oc/big-pickle",
+        "oc/hy3-free",
+        "go-code-fast",
     ],
     "custom": []
 }

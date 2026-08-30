@@ -64,7 +64,27 @@ PROVIDER_MODEL_MENUS: Dict[str, List[str]] = {
         "mistral",
         "Ketik nama model manual (Custom)"
     ],
+    "opencode-zen": [
+        "muse-spark-1.2-contributor-free",
+        "oc/mimo-v2.5-free",
+        "oc/big-pickle",
+        "oc/hy3-free",
+        "zen-code-1",
+        "zen-instruct-preview",
+        "Ketik nama model manual (Custom)"
+    ],
+    "opencode-go": [
+        "go-code-fast",
+        "go-flash",
+        "go-sonnet",
+        "go-chat",
+        "go-coder-preview",
+        "Ketik nama model manual (Custom)"
+    ],
     "custom": [
+        "gpt-4o",
+        "claude-3-5-sonnet-20241022",
+        "deepseek-chat",
         "Ketik nama model manual (Custom)"
     ]
 }
@@ -213,7 +233,7 @@ class SetupWizard:
 
         # Step 3: AI Provider Configuration & Flexible Model Selection
         print("\nStep [3/6] AI Provider Configuration")
-        providers = ["9router", "deepseek", "anthropic", "google", "openai", "openrouter", "ollama", "custom"]
+        providers = ["9router", "deepseek", "anthropic", "google", "openai", "openrouter", "ollama", "opencode-zen", "opencode-go", "custom"]
         cur_prov = existing_cfg.ai.provider if existing_cfg and existing_cfg.ai.provider in providers else "9router"
         provider = self._prompt_choice("Pilih AI Provider", providers, default_idx=providers.index(cur_prov))
         env_dict["AI_PROVIDER"] = provider
@@ -226,6 +246,14 @@ class SetupWizard:
         elif provider == "deepseek":
             default_ds_url = existing_cfg.ai.base_url if (existing_cfg and existing_cfg.ai.base_url) else "https://api.deepseek.com/v1"
             base_url = self._prompt("DeepSeek API URL", default_ds_url)
+            env_dict["AI_BASE_URL"] = base_url
+        elif provider == "opencode-zen":
+            default_zen_url = existing_cfg.ai.base_url if (existing_cfg and existing_cfg.ai.base_url) else "https://api.opencode.ai/v1"
+            base_url = self._prompt("OpenCode Zen API Base URL", default_zen_url)
+            env_dict["AI_BASE_URL"] = base_url
+        elif provider == "opencode-go":
+            default_go_url = existing_cfg.ai.base_url if (existing_cfg and existing_cfg.ai.base_url) else "https://go.opencode.ai/v1"
+            base_url = self._prompt("OpenCode Go API Base URL", default_go_url)
             env_dict["AI_BASE_URL"] = base_url
         elif provider == "custom":
             base_url = self._prompt("Custom OpenAI-compatible Base URL (contoh: http://localhost:8000/v1)", existing_cfg.ai.base_url if existing_cfg else "")

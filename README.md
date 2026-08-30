@@ -118,6 +118,8 @@ graph TD
 * **DeepSeek (Official)**: `deepseek-chat` (DeepSeek-V3), `deepseek-reasoner` (DeepSeek-R1)
 * **Anthropic Claude**: `claude-3-7-sonnet-20250219`, `claude-3-5-sonnet-20241022`, `claude-3-5-haiku-20241022`
 * **Google Gemini**: `gemini-2.0-flash`, `gemini-1.5-pro`, `gemini-1.5-flash`
+* **OpenCode Zen**: `muse-spark-1.2-contributor-free`, `oc/mimo-v2.5-free`, `oc/big-pickle`, `oc/hy3-free`, `zen-code-1`, `zen-instruct-preview`
+* **OpenCode Go**: `go-code-fast`, `go-flash`, `go-sonnet`, `go-chat`, `go-coder-preview`
 * **OpenAI**: `gpt-4o`, `gpt-4o-mini`, `o1`, `o3-mini`
 * **OpenRouter**: `anthropic/claude-3.5-sonnet`, `deepseek/deepseek-r1`, `openai/gpt-4o`
 * **Ollama**: `llama3.2`, `deepseek-r1`, `qwen2.5-coder`, `mistral`
