@@ -1,6 +1,8 @@
 @echo off
 setlocal enabledelayedexpansion
 
+cd /d "%~dp0\.."
+
 echo =========================================
 echo   Telegram Agent - Windows Setup Wizard
 echo =========================================

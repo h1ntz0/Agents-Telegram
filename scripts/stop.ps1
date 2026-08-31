@@ -1,5 +1,6 @@
 # PowerShell Stop Script for Windows
-$pidFile = Join-Path $PSScriptRoot "data\agent.pid"
+$projectRoot = Split-Path -Parent $PSScriptRoot
+$pidFile = Join-Path $projectRoot "data\agent.pid"
 
 if (Test-Path $pidFile) {
     $agentPid = Get-Content $pidFile

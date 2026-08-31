@@ -66,7 +66,7 @@ cd Agents-Telegram
 <summary><b>🐧 Linux / macOS</b></summary>
 
 ```bash
-./setup
+./scripts/setup
 ```
 </details>
 
@@ -75,10 +75,10 @@ cd Agents-Telegram
 
 ```powershell
 # PowerShell
-.\setup.ps1
+.\scripts\setup.ps1
 
 # Or Command Prompt (cmd.exe)
-setup.bat
+scripts\setup.bat
 ```
 </details>
 
@@ -86,9 +86,9 @@ The wizard automatically checks Python 3.12+, creates `.venv`, installs dependen
 
 ### 3. Start the Agent
 
-* **Linux / macOS**: `./start` *(stop with `./stop`)*
-* **Windows PowerShell**: `.\start.ps1` *(stop with `.\stop.ps1`)*
-* **Windows CMD**: `start.bat` *(stop with `stop.bat`)*
+* **Linux / macOS**: `./scripts/start` *(stop with `./scripts/stop`)*
+* **Windows PowerShell**: `.\scripts\start.ps1` *(stop with `.\scripts\stop.ps1`)*
+* **Windows CMD**: `scripts\start.bat` *(stop with `scripts\stop.bat`)*
 
 Open Telegram, search for your bot, and send `/start`!
 
@@ -188,7 +188,7 @@ For 24/7 background operation on a server or VPS:
 
 ```bash
 # 1. Run setup wizard to configure .env
-./setup
+./scripts/setup
 
 # 2. Start container with Docker Compose
 docker compose up -d
@@ -199,13 +199,13 @@ docker compose logs -f
 
 ---
 
-## 🩺 System Diagnostics (`./doctor`)
+## 🩺 System Diagnostics (`./scripts/doctor`)
 
 Validate connectivity, API credentials, and runtime dependencies at any time:
 
-* **Linux / macOS**: `./doctor`
-* **Windows PowerShell**: `.\doctor.ps1`
-* **Windows CMD**: `doctor.bat`
+* **Linux / macOS**: `./scripts/doctor`
+* **Windows PowerShell**: `.\scripts\doctor.ps1`
+* **Windows CMD**: `scripts\doctor.bat`
 
 ```text
 ✓ Operating System: Linux | Git: installed | Docker: installed

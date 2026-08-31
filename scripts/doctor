@@ -2,11 +2,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/pyproject.toml" ]; then
-    ROOT_DIR="$SCRIPT_DIR"
-else
-    ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-fi
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR"
 
 if [ ! -d ".venv" ]; then

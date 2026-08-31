@@ -20,13 +20,13 @@ The repository includes an automated setup wizard that creates a virtual environ
 
 ```bash
 # Linux / macOS
-./setup
+./scripts/setup
 
 # Windows PowerShell
-.\setup.ps1
+.\scripts\setup.ps1
 
 # Windows Command Prompt
-setup.bat
+scripts\setup.bat
 ```
 
 ### What the Wizard Does:
@@ -103,25 +103,25 @@ For debugging and viewing real-time log output:
 ./.venv/bin/python -m src
 ```
 
-### Background Daemon (`./start` & `./stop`)
+### Background Daemon (`./scripts/start` & `./scripts/stop`)
 To run the agent as a background process with PID tracking:
 
 ```bash
 # Start background daemon
-./start
+./scripts/start
 
 # Check process status and log output
 tail -f data/agent.log
 
 # Stop background daemon
-./stop
+./scripts/stop
 ```
 
-### System Diagnostics (`./doctor`)
+### System Diagnostics (`./scripts/doctor`)
 Run the diagnostics script at any time to verify system health:
 
 ```bash
-./doctor
+./scripts/doctor
 ```
 
 ---
@@ -131,7 +131,7 @@ Run the diagnostics script at any time to verify system health:
 ### Run with Docker Compose
 ```bash
 # Complete setup wizard first to generate .env
-./setup
+./scripts/setup
 
 # Start containers in detached mode
 docker compose up -d
@@ -191,8 +191,8 @@ sudo systemctl status telegram-agent
 
 | Symptom | Cause | Solution |
 | :--- | :--- | :--- |
-| `HTTP 401 Unauthorized` | Invalid Telegram token | Run `./setup` or update `TELEGRAM_BOT_TOKEN` in `.env`. |
+| `HTTP 401 Unauthorized` | Invalid Telegram token | Run `./scripts/setup` or update `TELEGRAM_BOT_TOKEN` in `.env`. |
 | `Sorry, you are not authorized` | ID missing from allowed list | Add your Telegram User ID to `TELEGRAM_ALLOWED_USERS` in `.env`. |
 | `SSRF Blocked: Destination IP is private` | Target URL is internal | The HTTP fetcher strictly forbids RFC 1918 addresses (`10.*`, `192.168.*`, `127.0.0.1`). |
-| `Database Locked` | Concurrent unclosed handles | Ensure only one agent instance runs against `data/agent.db`. Use `./stop` before starting a new process. |
+| `Database Locked` | Concurrent unclosed handles | Ensure only one agent instance runs against `data/agent.db`. Use `./scripts/stop` before starting a new process. |
 | `Tool Requires Confirmation` | High-risk tool triggered | Click the inline **Confirm** button in Telegram to approve execution. |

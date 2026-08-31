@@ -1,6 +1,9 @@
 # PowerShell Setup Script for Windows
 $ErrorActionPreference = "Stop"
 
+$projectRoot = Split-Path -Parent $PSScriptRoot
+Set-Location $projectRoot
+
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host "  Telegram Agent - Windows Setup Wizard  " -ForegroundColor Cyan
 Write-Host "=========================================" -ForegroundColor Cyan
@@ -20,7 +23,7 @@ if (Get-Command py -ErrorAction SilentlyContinue) {
 }
 
 # 2. Virtual Environment Setup
-$venvPath = Join-Path $PSScriptRoot ".venv"
+$venvPath = Join-Path $projectRoot ".venv"
 $venvPython = Join-Path $venvPath "Scripts\python.exe"
 
 if (-not (Test-Path $venvPython)) {

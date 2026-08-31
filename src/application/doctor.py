@@ -49,7 +49,7 @@ class SystemDoctor:
             results.append({
                 "name": "Configuration File",
                 "status": "FAIL",
-                "detail": f"{self.env_path} not found. Run './setup' to configure."
+                "detail": f"{self.env_path} not found. Run './scripts/setup' to configure."
             })
             return all_passed, results
 

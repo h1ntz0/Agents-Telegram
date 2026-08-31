@@ -2,18 +2,33 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/pyproject.toml" ]; then
-    ROOT_DIR="$SCRIPT_DIR"
-else
-    ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-fi
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR"
 
-if [ ! -d ".venv" ]; then
-    echo "Creating virtual environment..."
-    python3 -m venv .venv
-    ./.venv/bin/pip install --upgrade pip >/dev/null 2>&1
-    ./.venv/bin/pip install -e . >/dev/null 2>&1
+# 1. Locate Python 3.12+
+PYTHON_BIN=""
+if command -v python3.12 >/dev/null 2>&1; then
+    PYTHON_BIN="python3.12"
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="python3"
+elif command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+else
+    echo "Error: Python 3.12+ is required but not found in PATH."
+    exit 1
+fi
+
+# 2. Check / Create Virtual Environment
+if [ ! -d ".venv" ] || [ ! -f ".venv/bin/python" ]; then
+    echo "Creating virtual environment in .venv..."
+    $PYTHON_BIN -m venv .venv
+fi
+
+# 3. Ensure Dependencies are installed
+if ! ./.venv/bin/python -c "import httpx, pydantic, yaml, aiosqlite" >/dev/null 2>&1; then
+    echo "Installing missing dependencies..."
+    ./.venv/bin/pip install --quiet --upgrade pip
+    ./.venv/bin/pip install --quiet -e .
 fi
 
 exec ./.venv/bin/python -m src setup "$@"

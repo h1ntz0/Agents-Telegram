@@ -1,7 +1,10 @@
 # PowerShell Start Daemon Script for Windows
 $ErrorActionPreference = "Stop"
 
-$venvPath = Join-Path $PSScriptRoot ".venv"
+$projectRoot = Split-Path -Parent $PSScriptRoot
+Set-Location $projectRoot
+
+$venvPath = Join-Path $projectRoot ".venv"
 $venvPython = Join-Path $venvPath "Scripts\python.exe"
 
 if (-not (Test-Path $venvPython)) {

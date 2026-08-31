@@ -406,11 +406,11 @@ class SetupWizard:
         print("╰" + "─" * 46 + "╯\n")
         print("Jalankan agent dengan perintah:\n")
         if platform.system() == "Windows":
-            print("  PowerShell:      .\\start.ps1")
-            print("  Command Prompt:  start.bat\n")
+            print("  PowerShell:      .\\scripts\\start.ps1")
+            print("  Command Prompt:  scripts\\start.bat\n")
         else:
-            print("  Linux / macOS:   ./start")
-            print("  Windows:         .\\start.ps1\n")
+            print("  Linux / macOS:   ./scripts/start")
+            print("  Windows:         .\\scripts\\start.ps1\n")
         print("atau dengan Docker:\n")
         print("    docker compose up -d\n")
         print("Buka Telegram lalu kirim /start, /model, atau /sdlc ke bot Anda.\n")

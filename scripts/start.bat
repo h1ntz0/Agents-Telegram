@@ -1,7 +1,9 @@
 @echo off
+cd /d "%~dp0\.."
+
 if not exist ".venv\Scripts\python.exe" (
     echo [INFO] Virtual environment not found. Running setup first...
-    call setup.bat
+    call "%~dp0setup.bat"
 )
 
 REM Verify dependencies

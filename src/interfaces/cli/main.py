@@ -36,7 +36,7 @@ PID_FILE = "data/agent.pid"
 async def run_agent_daemon(env_path: str = ".env") -> None:
     """Initialize and run the agent runtime loop with graceful signal handling."""
     if not os.path.exists(env_path):
-        print(f"Configuration file '{env_path}' not found. Please run './setup' first.")
+        print(f"Configuration file '{env_path}' not found. Please run './scripts/setup' first.")
         sys.exit(1)
 
     cfg_mgr = ConfigManager(env_path=env_path)
