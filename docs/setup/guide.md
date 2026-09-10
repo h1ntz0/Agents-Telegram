@@ -21,22 +21,29 @@ The repository includes an automated setup wizard that creates a virtual environ
 ```bash
 # Linux / macOS
 ./scripts/setup
+```
 
-# Windows PowerShell
+```powershell
+# Windows PowerShell - run in your user directory (Documents / Home)
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
 .\scripts\setup.ps1
+```
 
-# Windows Command Prompt
+```bat
+REM Windows Command Prompt (cmd.exe)
 scripts\setup.bat
 ```
 
+> **Windows note:** Always clone and run from `%USERPROFILE%` (e.g. `C:\Users\YourName\Documents`). Do NOT run inside `C:\Windows\system32` which is write-protected and causes `Permission denied`.
 ### What the Wizard Does:
-1. Verifies Python 3.12+ runtime and required system utilities (`git`, `sqlite3`).
-2. Creates and populates the isolated `.venv` environment.
-3. Prompts for your **Telegram Bot Token** (from [@BotFather](https://t.me/BotFather)) and validates connectivity in real time.
-4. Lets you select your **AI Provider** (9router, DeepSeek, Anthropic, Google Gemini, OpenAI, OpenRouter, Ollama).
-5. Interactively presents recommended models or accepts custom model identifiers.
-6. Writes configuration to `.env` and locks file permissions (`chmod 600`) so other OS users cannot read your API tokens.
-
+1. Locates Python 3.12+ (supports `py -3.12`, `python`, `python3`; filters out broken Windows Store stubs; offers auto-install via `winget` if missing).
+2. Creates and populates the isolated `.venv` environment and bootstraps `pip` if missing.
+3. Installs dependencies with automatic fallback to direct package installs if setuptools editable mode fails.
+4. Prompts for your **Telegram Bot Token** (from [@BotFather](https://t.me/BotFather)) and validates connectivity in real time.
+5. Lets you select your **AI Provider** (9router, DeepSeek, Anthropic, Google Gemini, OpenAI, OpenRouter, Ollama).
+6. Interactively presents recommended models or accepts custom model identifiers.
+7. Writes configuration to `.env` and locks file permissions (`chmod 600`) so other OS users cannot read your API tokens.
+8. Pauses on error or completion so double-clicking the script never silently closes the terminal.
 ---
 
 ## ⚙️ 2. Configuration Reference (`.env`)

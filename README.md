@@ -56,9 +56,12 @@ Get your agent running in under **2 minutes**:
 
 ### 1. Clone & Enter Directory
 ```bash
+# Open a terminal in YOUR home folder first (NEVER C:\Windows\system32)
 git clone https://github.com/h1ntz0/Agents-Telegram.git
 cd Agents-Telegram
 ```
+
+> **Windows:** open PowerShell or Command Prompt, then `cd $HOME` (PowerShell) or `cd %USERPROFILE%` (CMD) *before* cloning. Cloning inside `C:\Windows\system32` fails with `Permission denied`.
 
 ### 2. Run Interactive Setup Wizard
 
@@ -74,15 +77,20 @@ cd Agents-Telegram
 <summary><b>🪟 Windows (PowerShell / Command Prompt)</b></summary>
 
 ```powershell
-# PowerShell
+# PowerShell - allow local scripts once, then run setup
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
 .\scripts\setup.ps1
+```
 
-# Or Command Prompt (cmd.exe)
+```bat
+REM Command Prompt (cmd.exe)
 scripts\setup.bat
 ```
+
+If Python 3.12+ is missing, the installer now offers to install it automatically via **winget**. If it does, close the window, open a **new** one, and run setup again.
 </details>
 
-The wizard automatically checks Python 3.12+, creates `.venv`, installs dependencies, queries available models live from your provider API, and creates your `.env` configuration file.
+The wizard verifies Python 3.12+, bootstraps `pip` if needed, creates `.venv`, installs dependencies (with an offline-safe fallback), queries available models live from your provider API, and creates your `.env` configuration file. Every failure prints a clear message and waits for a keypress instead of closing the window.
 
 ### 3. Start the Agent
 
