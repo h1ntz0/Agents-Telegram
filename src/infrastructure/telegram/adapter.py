@@ -15,6 +15,7 @@ DEFAULT_BOT_COMMANDS: List[Dict[str, str]] = [
     {"command": "model", "description": "Lihat atau ganti model AI aktif"},
     {"command": "agent", "description": "Ganti sub-agent persona (coder/qa/researcher)"},
     {"command": "sdlc", "description": "Jalankan 4 tahap SDLC otomatis"},
+    {"command": "oc", "description": "Remote kontrol sesi OpenCode terminal (list/attach/detach/send)"},
     {"command": "schedule", "description": "Jadwalkan prompt AI / cron (e.g. /schedule every 1h Periksa bursa)"},
     {"command": "remind", "description": "Setel pengingat waktu (e.g. /remind 10m Minum air)"},
     {"command": "chart", "description": "Buat grafik visual & ASCII (e.g. /chart bar A,B,C 10,20,30)"},
@@ -25,6 +26,7 @@ DEFAULT_BOT_COMMANDS: List[Dict[str, str]] = [
     {"command": "reset", "description": "Bersihkan riwayat percakapan"},
     {"command": "cancel", "description": "Batalkan aksi pending"},
     {"command": "help", "description": "Panduan lengkap perintah bot"},
+    {"command": "oc", "description": "Hubungkan ke sesi terminal OpenCode (/oc list, attach, send)"},
 ]
 
 

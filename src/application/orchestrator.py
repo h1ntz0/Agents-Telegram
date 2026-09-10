@@ -6,11 +6,13 @@ import csv
 import io
 import json
 import logging
+import os
 import re
 import uuid
 from typing import Any, Dict, List, Optional
 import httpx
 from src.application.config_manager import RootConfig
+from src.infrastructure.opencode.bridge import OpenCodeBridge, OpenCodeError
 from src.application.multiagent_sdlc import MultiAgentSDLC
 from src.domain.agent import AgentState, Message, PendingConfirmation, Role, Session, ToolCall, ToolResponse
 from src.domain.provider import AIProvider, CompletionRequest, PROVIDER_MODELS_CATALOG
@@ -60,6 +62,10 @@ class AgentOrchestrator:
         self._pending_actions: Dict[str, PendingConfirmation] = {}
         self._user_active_persona: Dict[int, str] = {}
         self._user_active_model: Dict[int, str] = {}
+        self._user_active_oc_session: Dict[int, str] = {}
+        self.opencode_bridge = OpenCodeBridge(
+            base_url=getattr(config.ai, "opencode_server_url", "http://127.0.0.1:4096")
+        )
 
     async def _get_user_model(self, user_id: int) -> str:
         """Retrieve user's chosen model from runtime cache or SQLite persistence."""
@@ -573,8 +579,129 @@ class AgentOrchestrator:
             else:
                 await self.telegram.send_message(chat_id, "No action currently pending confirmation.")
 
+        elif cmd == "/oc":
+            await self._handle_oc_command(chat_id, user_id, args)
+
         else:
             await self.telegram.send_message(chat_id, f"Unknown command '{cmd}'. Type /help for assistance.")
+
+    async def _handle_oc_command(self, chat_id: int, user_id: int, args: str) -> None:
+        """Manage OpenCode terminal session attach, list, new, and direct messaging."""
+        tokens = args.split(maxsplit=1)
+        subcmd = tokens[0].lower() if tokens else ""
+        subargs = tokens[1].strip() if len(tokens) > 1 else ""
+
+        current_attached = self._user_active_oc_session.get(user_id)
+
+        if not subcmd or subcmd == "status":
+            url = await self.opencode_bridge.auto_discover_server()
+            status_line = f"🟢 Connected ({url})" if url else "⚪ Offline (jalankan `opencode serve` di terminal)"
+            attached_line = f"`{current_attached}`" if current_attached else "None (kirim `/oc attach <session_id>`)"
+            msg = (
+                f"**OpenCode Terminal Bridge**\n\n"
+                f"• Server: {status_line}\n"
+                f"• Attached Session: {attached_line}\n\n"
+                "Perintah:\n"
+                "• `/oc list` — Tampilkan semua sesi OpenCode lokal\n"
+                "• `/oc attach <id>` — Hubungkan bot ke sesi terminal OpenCode\n"
+                "• `/oc detach` — Lepas sesi yang sedang terhubung\n"
+                "• `/oc new [title]` — Buat sesi OpenCode baru dari Telegram\n"
+                "• `/oc send <prompt>` — Kirim pesan langsung ke sesi terminal"
+            )
+            await self.telegram.send_message(chat_id, msg)
+            return
+
+        elif subcmd == "list":
+            await self.telegram.send_chat_action(chat_id, "typing")
+            try:
+                await self.opencode_bridge.auto_discover_server()
+                sessions = await self.opencode_bridge.list_sessions()
+                if not sessions:
+                    await self.telegram.send_message(chat_id, "Tidak ada sesi OpenCode yang ditemukan.")
+                    return
+                lines = ["**Sesi OpenCode Lokal:**\n"]
+                for s in sessions[:15]:
+                    sid = s.get("id", "")
+                    title = s.get("title") or s.get("slug") or "(untitled)"
+                    model_info = s.get("model") or {}
+                    m_name = model_info.get("id") or model_info.get("modelID") or "default"
+                    marker = " 👈 (attached)" if sid == current_attached else ""
+                    lines.append(f"• `{sid}`\n  {title} [{m_name}]{marker}")
+                lines.append("\nKetik `/oc attach <id>` untuk menghubungkan sesi ke chat ini.")
+                await self.telegram.send_message(chat_id, "\n".join(lines))
+            except Exception as e:
+                await self.telegram.send_message(chat_id, f"Gagal mengambil sesi OpenCode: {str(e)}")
+            return
+
+        elif subcmd == "attach":
+            if not subargs:
+                await self.telegram.send_message(chat_id, "Penggunaan: `/oc attach <session_id>`")
+                return
+            target_sid = subargs.strip()
+            try:
+                session_data = await self.opencode_bridge.get_session(target_sid)
+                if not session_data:
+                    await self.telegram.send_message(chat_id, f"Sesi `{target_sid}` tidak ditemukan di server OpenCode.")
+                    return
+                self._user_active_oc_session[user_id] = target_sid
+                title = session_data.get("title") or target_sid
+                await self.telegram.send_message(
+                    chat_id,
+                    f"✓ Sesi OpenCode `{target_sid}` ({title}) berhasil di-attach!\n\n"
+                    "Sekarang, setiap pesan yang Anda kirim di chat ini akan langsung dieksekusi oleh sesi terminal OpenCode tersebut.\n"
+                    "Ketik `/oc detach` untuk kembali ke mode bot standar."
+                )
+            except Exception as e:
+                await self.telegram.send_message(chat_id, f"Gagal attach sesi: {str(e)}")
+            return
+
+        elif subcmd == "detach":
+            if user_id in self._user_active_oc_session:
+                old_sid = self._user_active_oc_session.pop(user_id)
+                await self.telegram.send_message(chat_id, f"✓ Sesi `{old_sid}` telah dilepas. Bot kembali ke mode AI mandiri.")
+            else:
+                await self.telegram.send_message(chat_id, "Tidak ada sesi OpenCode yang sedang terhubung.")
+            return
+
+        elif subcmd == "new":
+            title = subargs if subargs else "telegram-session"
+            try:
+                new_s = await self.opencode_bridge.create_session(title=title)
+                new_sid = new_s.get("id")
+                if new_sid:
+                    self._user_active_oc_session[user_id] = new_sid
+                    await self.telegram.send_message(chat_id, f"✓ Sesi OpenCode baru dibuat & di-attach: `{new_sid}` ({title}).")
+                else:
+                    await self.telegram.send_message(chat_id, "Sesi dibuat tetapi server tidak mengembalikan ID.")
+            except Exception as e:
+                await self.telegram.send_message(chat_id, f"Gagal membuat sesi: {str(e)}")
+            return
+
+        elif subcmd == "send":
+            if not subargs:
+                await self.telegram.send_message(chat_id, "Penggunaan: `/oc send <prompt>`")
+                return
+            target_sid = current_attached
+            if not target_sid:
+                # Auto-pick the most recent session
+                sessions = await self.opencode_bridge.list_sessions()
+                if sessions:
+                    target_sid = sessions[0].get("id")
+            if not target_sid:
+                await self.telegram.send_message(chat_id, "Tidak ada sesi OpenCode aktif. Jalankan `/oc new` atau `/oc attach <id>`.")
+                return
+
+            await self.telegram.send_chat_action(chat_id, "typing")
+            try:
+                reply = await self.opencode_bridge.send_message(target_sid, subargs)
+                clean_reply = humanize_response(reply)
+                await self.telegram.send_message(chat_id, f"**OpenCode (`{target_sid}`):**\n\n{clean_reply}")
+            except Exception as e:
+                await self.telegram.send_message(chat_id, f"OpenCode Error: {str(e)}")
+            return
+
+        else:
+            await self.telegram.send_message(chat_id, f"Perintah `/oc {subcmd}` tidak dikenal. Ketik `/oc` untuk bantuan.")
 
     async def _run_sdlc_flow(self, chat_id: int, user_id: int, feature_description: str) -> None:
         """Run Multi-Agent SDLC sequence with live progress edits."""
@@ -658,7 +785,24 @@ class AgentOrchestrator:
         prompt_text: str,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Execute ReAct loop with tool resolution, exact chosen session model, and humanized output."""
+        """Execute ReAct loop or forward to an attached OpenCode terminal session."""
+        # If a user has an OpenCode session attached, forward straight to the terminal
+        oc_sid = self._user_active_oc_session.get(user_id)
+        if oc_sid:
+            await self.telegram.send_chat_action(chat_id, "typing")
+            try:
+                reply_text = await self.opencode_bridge.send_message(oc_sid, prompt_text)
+                clean_reply = humanize_response(reply_text)
+            except OpenCodeError as e:
+                clean_reply = (
+                    f"Gagal menghubungi sesi OpenCode `{oc_sid}`: {str(e)}\n"
+                    "Ketik `/oc list` untuk daftar sesi, atau `/oc detach` untuk lepas."
+                )
+            except Exception as e:
+                clean_reply = f"Terminal error: {str(e)}"
+            await self.telegram.send_message(chat_id, clean_reply)
+            return
+
         await self.telegram.send_chat_action(chat_id, "typing")
 
         session = await self.db.get_or_create_session(user_id, chat_id)

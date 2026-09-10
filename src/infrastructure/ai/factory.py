@@ -62,16 +62,16 @@ def create_ai_provider(
         )
     elif name in (ProviderType.OPENCODE_ZEN.value, "opencode_zen", "opencode zen", "zen", "opencode"):
         return OpenCodeZenProvider(
-            api_key=api_key,
+            api_key=api_key or "opencode-local-key",
             model=model or "muse-spark-1.2-contributor-free",
-            base_url=base_url if base_url else "https://api.opencode.ai/v1",
+            base_url=base_url,
             timeout=timeout
         )
     elif name in (ProviderType.OPENCODE_GO.value, "opencode_go", "opencode go", "go"):
         return OpenCodeGoProvider(
-            api_key=api_key,
+            api_key=api_key or "opencode-local-key",
             model=model or "go-code-fast",
-            base_url=base_url if base_url else "https://go.opencode.ai/v1",
+            base_url=base_url,
             timeout=timeout
         )
     elif name in (ProviderType.OPENAI.value, "custom"):

@@ -16,7 +16,7 @@ def test_create_opencode_zen_provider():
     )
     assert isinstance(provider, OpenCodeZenProvider)
     assert provider.provider_type == ProviderType.OPENCODE_ZEN
-    assert provider.base_url == "https://api.opencode.ai/v1"
+    assert provider.base_url == "http://127.0.0.1:20128/v1"
     assert provider.model == "muse-spark-1.2-contributor-free"
 
 
@@ -28,9 +28,16 @@ def test_create_opencode_go_provider():
     )
     assert isinstance(provider, OpenCodeGoProvider)
     assert provider.provider_type == ProviderType.OPENCODE_GO
-    assert provider.base_url == "https://go.opencode.ai/v1"
+    assert provider.base_url == "http://127.0.0.1:20128/v1"
     assert provider.model == "go-code-fast"
 
+
+def test_opencode_base_url_override():
+    zen = create_ai_provider(provider_name="opencode-zen", api_key="k", base_url="http://example.test/v1")
+    assert zen.base_url == "http://example.test/v1"
+
+    go = create_ai_provider(provider_name="opencode-go", api_key="k", base_url="http://example.test/v2")
+    assert go.base_url == "http://example.test/v2"
 
 def test_opencode_aliases_support():
     p1 = create_ai_provider(provider_name="zen", api_key="k")

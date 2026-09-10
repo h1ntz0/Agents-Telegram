@@ -1,7 +1,9 @@
-"""Shell command execution tool with sandboxing and safety filters."""
+"""Shell command execution tool with sandboxing and safety filters (cross-platform)."""
 
 import asyncio
+import platform
 import re
+import shutil
 from typing import Any, Dict
 from src.domain.tool import BaseTool, PermissionLevel, RiskLevel, ToolDefinition, ToolResult
 from src.infrastructure.security.prompt_guard import wrap_untrusted_content
@@ -30,7 +32,7 @@ class ShellTool(BaseTool):
     def definition(self) -> ToolDefinition:
         return ToolDefinition(
             name="shell_execute",
-            description="Execute shell commands on the local machine (requires explicit enabling).",
+            description="Execute shell commands on the local machine (cross-platform, requires explicit enabling).",
             parameters={
                 "type": "object",
                 "properties": {
@@ -45,6 +47,25 @@ class ShellTool(BaseTool):
             risk_level=RiskLevel.HIGH,
             requires_confirmation=True
         )
+
+    @staticmethod
+    def _build_argv(command: str) -> list:
+        """Build a cross-platform argv without using shell=True."""
+        system = platform.system().lower()
+        if system == "windows":
+            pwsh = shutil.which("pwsh")
+            if pwsh:
+                return [pwsh, "-NoProfile", "-Command", command]
+            powershell = shutil.which("powershell")
+            if powershell:
+                return [powershell, "-NoProfile", "-Command", command]
+            cmd_exe = shutil.which("cmd") or "cmd.exe"
+            return [cmd_exe, "/c", command]
+        bash = shutil.which("bash")
+        if bash:
+            return [bash, "-c", command]
+        sh = shutil.which("sh") or "sh"
+        return [sh, "-c", command]
 
     async def execute(self, arguments: Dict[str, Any], user_id: int) -> ToolResult:
         if not self.enabled:
@@ -65,9 +86,10 @@ class ShellTool(BaseTool):
                         is_error=True
                     )
 
+        argv = self._build_argv(command)
         try:
-            process = await asyncio.create_subprocess_shell(
-                command,
+            process = await asyncio.create_subprocess_exec(
+                *argv,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )

@@ -120,6 +120,7 @@ Slash commands auto-register with Telegram on startup for instant autocomplete m
 | `/memory` | — | View stored persistent user context and preferences | `/memory` |
 | `/reset` | — | Clear conversation context and active session history | `/reset` |
 | `/cancel` | — | Abort pending high-risk action or scheduled prompt | `/cancel` |
+| `/oc` | `[list\|attach\|detach\|new\|send]` | Remote-control active OpenCode terminal session | `/oc attach ses_123` |
 | `/help` | — | Display complete command reference | `/help` |
 
 ---
@@ -170,6 +171,8 @@ All tools operate under strict permission boundaries and parameter sanitization:
 | `weather` | `READ` | `LOW` | Fetches real-time atmospheric data and multi-day meteorological forecasts. |
 | `generate_chart` | `WRITE` | `LOW` | Renders visual plots (bar, line, pie, scatter) and sends PNGs directly to chat. |
 | `file_read` / `file_write` | `READ` / `WRITE` | `LOW` / `MEDIUM` | Accesses workspace files within `FILESYSTEM_ROOT_DIR` with path jail guards. |
+| `file_edit` / `file_delete` | `WRITE` / `DESTRUCTIVE` | `MEDIUM` / `HIGH` | Search-and-replace code editing & file removal in workspace. |
+| `opencode_session` | `EXECUTE` | `MEDIUM` | Bridges prompts directly to a locally running OpenCode coding session (`opencode serve`). |
 | `github` | `READ` / `WRITE` | `LOW` / `MEDIUM` | Inspects repositories, tracks issues, and manages pull requests. |
 | `shell_execute` | `EXECUTE` | `HIGH` | Runs system commands; requires explicit user button confirmation. |
 

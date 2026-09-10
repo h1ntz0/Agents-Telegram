@@ -21,7 +21,9 @@ from src.infrastructure.security.rate_limiter import UserRateLimiter
 from src.infrastructure.telegram.adapter import TelegramAdapter
 from src.infrastructure.telegram.auth import TelegramAuthManager
 from src.infrastructure.tools.chart_tool import ChartTool
-from src.infrastructure.tools.filesystem_tool import DirectoryListTool, FileReadTool, FileWriteTool
+from src.infrastructure.opencode.bridge import OpenCodeBridge
+from src.infrastructure.tools.filesystem_tool import DirectoryListTool, FileDeleteTool, FileEditTool, FileReadTool, FileWriteTool
+from src.infrastructure.tools.opencode_tool import OpenCodeBridgeTool
 from src.infrastructure.tools.github_tool import GitHubTool
 from src.infrastructure.tools.http_fetch_tool import HttpFetchTool
 from src.infrastructure.tools.python_sandbox_tool import PythonSandboxTool
@@ -88,6 +90,14 @@ async def run_agent_daemon(env_path: str = ".env") -> None:
             root_dir=config.tools.filesystem.root_dir,
             read_only=config.tools.filesystem.read_only
         ))
+        tools.register(FileEditTool(
+            root_dir=config.tools.filesystem.root_dir,
+            read_only=config.tools.filesystem.read_only
+        ))
+        tools.register(FileDeleteTool(
+            root_dir=config.tools.filesystem.root_dir,
+            read_only=config.tools.filesystem.read_only
+        ))
         tools.register(DirectoryListTool(root_dir=config.tools.filesystem.root_dir))
 
     if config.tools.shell.enabled:
@@ -96,6 +106,9 @@ async def run_agent_daemon(env_path: str = ".env") -> None:
             timeout=getattr(config.tools.shell, "timeout_seconds", 30.0),
             allow_destructive=config.tools.shell.allow_destructive
         ))
+
+    # OpenCode session bridge (remote-control a local opencode serve instance)
+    tools.register(OpenCodeBridgeTool(bridge=OpenCodeBridge(base_url=config.ai.opencode_server_url)))
 
     # Initialize AI Provider
     ai = create_ai_provider(

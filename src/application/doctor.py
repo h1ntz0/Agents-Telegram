@@ -9,6 +9,7 @@ from src.application.config_manager import ConfigManager, RootConfig
 from src.infrastructure.ai.factory import create_ai_provider
 from src.infrastructure.database.sqlite_db import SqliteDatabase
 from src.infrastructure.telegram.adapter import TelegramAdapter
+from src.infrastructure.opencode.bridge import OpenCodeBridge
 
 
 class SystemDoctor:
@@ -135,6 +136,31 @@ class SystemDoctor:
                     })
             except Exception as e:
                 all_passed = False
+            except Exception as e:
+                all_passed = False
                 results.append({"name": "AI Provider", "status": "FAIL", "detail": f"Provider check error: {str(e)}"})
+
+        # 8. OpenCode Bridge Status (Advisory / Optional)
+        try:
+            oc_bridge = OpenCodeBridge(base_url=config.ai.opencode_server_url)
+            oc_url = await oc_bridge.auto_discover_server()
+            if oc_url:
+                results.append({
+                    "name": "OpenCode Terminal Bridge",
+                    "status": "PASS",
+                    "detail": f"Server responding at {oc_url} (/oc commands ready)"
+                })
+            else:
+                results.append({
+                    "name": "OpenCode Terminal Bridge",
+                    "status": "INFO",
+                    "detail": "Offline (start with `opencode serve --port 4096` to enable terminal remote control)"
+                })
+        except Exception as e:
+            results.append({
+                "name": "OpenCode Terminal Bridge",
+                "status": "INFO",
+                "detail": f"Not reachable ({str(e)})"
+            })
 
         return all_passed, results

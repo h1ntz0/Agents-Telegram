@@ -35,6 +35,8 @@ class AISettings(BaseModel):
     temperature: float = 0.2
     max_tokens: int = 2048
     timeout_seconds: float = 60.0
+    opencode_server_url: str = "http://127.0.0.1:4096"
+    timeout_seconds: float = 60.0
 
 
 class AgentSettings(BaseModel):
@@ -197,6 +199,7 @@ class ConfigManager:
             temperature=float(get_val("AI_TEMPERATURE", ai_dict.get("temperature", 0.2))),
             max_tokens=int(get_val("AI_MAX_TOKENS", ai_dict.get("max_tokens", 2048))),
             timeout_seconds=float(get_val("AI_TIMEOUT_SECONDS", ai_dict.get("timeout_seconds", 60.0))),
+            opencode_server_url=get_val("OPENCODE_SERVER_URL", ai_dict.get("opencode_server_url", "http://127.0.0.1:4096")),
         )
 
         agent_cfg = AgentSettings(
