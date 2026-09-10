@@ -10,6 +10,8 @@ echo.
 
 REM ---- 1. Locate a working Python 3.12+ -------------------------------
 set "PYTHON_CMD="
+call :try_python "py -3.14"
+call :try_python "py -3.13"
 call :try_python "py -3.12"
 call :try_python "py -3"
 call :try_python "python"
@@ -17,6 +19,7 @@ call :try_python "python3"
 
 if not defined PYTHON_CMD goto :no_python
 
+:have_python
 echo [OK] Using Python: %PYTHON_CMD%
 echo.
 
@@ -88,10 +91,23 @@ exit /b 0
 :no_python
 echo [ERROR] Python 3.12 or newer was not found on this computer.
 echo.
+
+REM Preferred: the "py" launcher can install a runtime directly
+where py >nul 2>nul
+if errorlevel 1 goto :no_python_winget
+echo [INFO] Installing Python 3.12 via the "py" launcher ...
+py install 3.12
+call :try_python "py -3.12"
+if defined PYTHON_CMD goto :have_python
+
+:no_python_winget
 where winget >nul 2>nul
 if errorlevel 1 goto :no_python_manual
-echo [INFO] Trying to install Python 3.12 automatically via winget ...
+echo [INFO] Installing Python 3.12 via winget ...
 winget install -e --id Python.Python.3.12 --scope user --accept-package-agreements --accept-source-agreements
+call :try_python "py -3.12"
+if defined PYTHON_CMD goto :have_python
+
 echo.
 echo [INFO] If Python was installed, CLOSE this window, open a NEW one,
 echo        then run:  scripts\setup.bat

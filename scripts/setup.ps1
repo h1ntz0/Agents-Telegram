@@ -29,7 +29,7 @@ function Test-PythonCandidate([string]$cmd) {
     }
 }
 
-$candidates = @("py -3.12", "py -3", "python", "python3")
+$candidates = @("py -3.14", "py -3.13", "py -3.12", "py -3", "python", "python3")
 $pythonCmd = $null
 
 foreach ($c in $candidates) {
@@ -43,13 +43,28 @@ if (-not $pythonCmd) {
     Write-Host "[ERROR] Python 3.12+ was not detected or is incompatible." -ForegroundColor Red
     Write-Host ""
 
-    $winget = Get-Command winget -ErrorAction SilentlyContinue
-    if ($winget) {
+    $pyLauncher = Get-Command py -ErrorAction SilentlyContinue
+    if ($pyLauncher) {
+        Write-Host "[INFO] Installing Python 3.12 via the 'py' launcher..." -ForegroundColor Yellow
+        py install 3.12
+        if (Test-PythonCandidate "py -3.12") {
+            $pythonCmd = "py -3.12"
+        }
+    }
+    if ((-not $pythonCmd) -and (Get-Command winget -ErrorAction SilentlyContinue)) {
         Write-Host "[INFO] Attempting to auto-install Python 3.12 via winget..." -ForegroundColor Yellow
         winget install -e --id Python.Python.3.12 --scope user --accept-package-agreements --accept-source-agreements
+        if (Test-PythonCandidate "py -3.12") {
+            $pythonCmd = "py -3.12"
+        }
+    }
+    if ($pythonCmd) {
+        # fall through to the normal setup path
+    } elseif ($pyLauncher -or (Get-Command winget -ErrorAction SilentlyContinue)) {
         Write-Host ""
         Write-Host "[INFO] If install completed, CLOSE this PowerShell window, open a NEW one," -ForegroundColor Cyan
         Write-Host "       then re-run .\scripts\setup.ps1" -ForegroundColor Cyan
+        Exit-With-Pause 1
     } else {
         Write-Host "Please install Python 3.12+ manually:" -ForegroundColor Yellow
         Write-Host "  1. Download from https://www.python.org/downloads/" -ForegroundColor White
