@@ -102,6 +102,16 @@ Open Telegram, search for your bot, and send `/start`!
 
 ---
 
+## 🎬 Video Tutorial
+
+Watch the full setup walkthrough — running the wizard (with live model discovery) and then driving the agent from Telegram:
+
+[![Setup walkthrough — click to play](assets/tutorial-setup-poster.png)](assets/tutorial-setup.mp4)
+
+*▶ Click the preview to play the walkthrough (1m 35s · MP4 · 1280×646).*
+
+---
+
 ## 💬 Telegram Slash Commands
 
 Slash commands auto-register with Telegram on startup for instant autocomplete menu support:
