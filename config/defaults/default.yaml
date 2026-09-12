@@ -32,7 +32,7 @@ tools:
   web_search:
     enabled: true
   github:
-    enabled: false
+    enabled: true
     token: ""
     default_repo: ""
     allow_write: false

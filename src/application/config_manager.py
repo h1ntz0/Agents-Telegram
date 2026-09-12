@@ -50,7 +50,7 @@ class WebSearchToolSettings(BaseModel):
 
 
 class GitHubToolSettings(BaseModel):
-    enabled: bool = False
+    enabled: bool = True
     token: str = ""
     default_repo: str = ""
     allow_write: bool = False
@@ -227,7 +227,7 @@ class ConfigManager:
             timeout_seconds=float(get_val("WEATHER_TIMEOUT_SECONDS", tools_dict.get("weather", {}).get("timeout_seconds", 12.0))),
         )
         github_cfg = GitHubToolSettings(
-            enabled=str(get_val("ENABLE_GITHUB", tools_dict.get("github", {}).get("enabled", False))).lower() in ("true", "1", "yes"),
+            enabled=str(get_val("ENABLE_GITHUB", tools_dict.get("github", {}).get("enabled", True))).lower() in ("true", "1", "yes"),
             token=get_val("GITHUB_TOKEN", tools_dict.get("github", {}).get("token", "")),
             default_repo=get_val("GITHUB_DEFAULT_REPO", tools_dict.get("github", {}).get("default_repo", "")),
             allow_write=str(get_val("GITHUB_ALLOW_WRITE", tools_dict.get("github", {}).get("allow_write", False))).lower() in ("true", "1", "yes"),

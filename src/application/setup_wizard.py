@@ -341,7 +341,7 @@ class SetupWizard:
             print("\nStep [5/6] Advanced Integrations & Security")
             env_dict["ENABLE_WEB_SEARCH"] = self._prompt_bool("Aktifkan fitur Web Search?", default=True)
 
-            enable_gh = self._prompt_bool("Aktifkan integrasi GitHub?", default=False)
+            enable_gh = self._prompt_bool("Aktifkan integrasi GitHub?", default=True)
             env_dict["ENABLE_GITHUB"] = enable_gh
             if enable_gh:
                 env_dict["GITHUB_TOKEN"] = self._prompt_secret("GitHub Personal Access Token", "")
@@ -359,7 +359,7 @@ class SetupWizard:
         else:
             # Sane defaults
             env_dict["ENABLE_WEB_SEARCH"] = True
-            env_dict["ENABLE_GITHUB"] = False
+            env_dict["ENABLE_GITHUB"] = True
             env_dict["ENABLE_FILESYSTEM"] = True
             env_dict["FILESYSTEM_READ_ONLY"] = True
             env_dict["ALLOW_SHELL"] = False

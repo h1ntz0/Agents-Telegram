@@ -133,8 +133,14 @@ graph TD
 * **Permission**: `READ` / `WRITE` | **Risk**: `LOW` / `MEDIUM`
 
 ### 7. GitHub Integration (`github`)
-* **Purpose**: Inspects repositories, tracks issues, reads pull requests, and views recent commit logs.
-* **Security**: Authenticated via personal access token (`GITHUB_TOKEN`). Write actions (e.g. creating issues) require `GITHUB_ALLOW_WRITE=true`.
+* **Purpose**: Inspects repositories, reads file contents, browses directory trees, tracks issues, and manages pull requests. Works with public repositories out-of-the-box without a token.
+* **Supported Actions**:
+  * `get_file` / `read_file`: Fetches raw file text directly via GitHub REST API without third-party mirrors.
+  * `list_files` / `list_dir`: Lists repository folder entries with file sizes and paths.
+  * `get_repo`: Retrieves repository metadata, star counts, and default branch.
+  * `list_issues` / `get_issue`: Inspects open bug reports and discussions.
+  * `create_issue`: Submits new issues (requires `GITHUB_ALLOW_WRITE=true` and `GITHUB_TOKEN`).
+* **Security**: Read operations are rate-guarded and run without privileges. Write actions require explicit configuration.
 * **Permission**: `READ` / `WRITE` | **Risk**: `LOW`
 
 ### 8. Shell Executor (`shell_execute`)

@@ -173,7 +173,7 @@ All tools operate under strict permission boundaries and parameter sanitization:
 | `file_read` / `file_write` | `READ` / `WRITE` | `LOW` / `MEDIUM` | Accesses workspace files within `FILESYSTEM_ROOT_DIR` with path jail guards. |
 | `file_edit` / `file_delete` | `WRITE` / `DESTRUCTIVE` | `MEDIUM` / `HIGH` | Search-and-replace code editing & file removal in workspace. |
 | `opencode_session` | `EXECUTE` | `MEDIUM` | Bridges prompts directly to a locally running OpenCode coding session (`opencode serve`). |
-| `github` | `READ` / `WRITE` | `LOW` / `MEDIUM` | Inspects repositories, tracks issues, and manages pull requests. |
+| `github` | `READ` / `WRITE` | `LOW` / `MEDIUM` | Reads repository files (`get_file`), lists directories (`list_files`), inspects repo metadata, and tracks issues. Works on public repos without token. |
 | `shell_execute` | `EXECUTE` | `HIGH` | Runs system commands; requires explicit user button confirmation. |
 
 ---
