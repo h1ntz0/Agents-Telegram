@@ -7,6 +7,25 @@ from src.domain.agent import Message, Role, ToolCall
 from src.domain.provider import AIProvider, CompletionRequest, CompletionResponse, ProviderType, TokenUsage
 
 
+def _looks_like_html(text: str) -> bool:
+    """True when a response body is an HTML page rather than an API payload."""
+    head = (text or "").lstrip()[:200].lower()
+    return head.startswith("<!doctype html") or head.startswith("<html")
+
+
+def _api_error_hint(base_url: str, body: str) -> str:
+    """Return an actionable hint when the endpoint clearly is not an API root."""
+    if not _looks_like_html(body):
+        return ""
+    hint = (
+        f" The endpoint '{base_url}' returned an HTML page instead of an API response."
+        " The Base URL is probably pointing at a web UI instead of the API root."
+    )
+    if not base_url.rstrip("/").endswith("/v1"):
+        hint += " For 9router, use http://localhost:20128/v1 (note the /v1 suffix)."
+    return hint
+
+
 class OpenAIProvider(AIProvider):
     """Handles communication with OpenAI API and compatible endpoints (9router, DeepSeek, OpenRouter, vLLM, Ollama-compat, etc.)."""
 
@@ -15,6 +34,8 @@ class OpenAIProvider(AIProvider):
         self.model = model
         self.base_url = (base_url or "https://api.openai.com/v1").rstrip("/")
         self.timeout = timeout
+        self.last_error: Optional[str] = None
+        self.timeout = timeout
 
     @property
     def provider_type(self) -> ProviderType:
@@ -22,6 +43,7 @@ class OpenAIProvider(AIProvider):
 
     async def validate_credentials(self) -> bool:
         """Check API key validity by querying available models or a ping completion."""
+        self.last_error = None
         url = f"{self.base_url}/models"
         headers = {"Authorization": f"Bearer {self.api_key}"}
         try:
@@ -36,8 +58,15 @@ class OpenAIProvider(AIProvider):
                     headers=headers,
                     json={"model": self.model, "messages": [{"role": "user", "content": "ping"}], "max_tokens": 1}
                 )
-                return c_res.status_code == 200
-        except Exception:
+                if c_res.status_code == 200:
+                    return True
+                self.last_error = (
+                    f"HTTP {c_res.status_code} from {chat_url}"
+                    + _api_error_hint(self.base_url, c_res.text)
+                )
+                return False
+        except Exception as e:
+            self.last_error = f"{type(e).__name__} calling {url}: {e}"
             return False
 
     def _extract_response_data(self, response_text: str) -> CompletionResponse:
@@ -254,6 +283,12 @@ class OpenAIProvider(AIProvider):
                     error_detail = error_json.get("error", {}).get("message", res.text)
                 except Exception:
                     pass
-                raise RuntimeError(f"AI Provider Error [{res.status_code}]: {error_detail}")
+                if _looks_like_html(res.text):
+                    # Never dump a whole HTML page into the chat.
+                    error_detail = "(the endpoint returned an HTML page, not an API response)"
+                raise RuntimeError(
+                    f"AI Provider Error [{res.status_code}]: {error_detail}"
+                    + _api_error_hint(self.base_url, res.text)
+                )
 
             return self._extract_response_data(res.text)

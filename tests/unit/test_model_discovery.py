@@ -4,6 +4,7 @@ import pytest
 import httpx
 from unittest.mock import AsyncMock, patch, MagicMock
 from src.infrastructure.ai.model_discovery import (
+    base_url_lacks_api_path,
     fetch_available_models,
     fetch_available_models_ex,
     normalize_base_url,
@@ -94,6 +95,13 @@ def test_normalize_base_url():
     assert normalize_base_url("") is None
     assert normalize_base_url("not a url") is None
     assert normalize_base_url("ftp://example.com") is None
+
+
+def test_base_url_lacks_api_path():
+    assert base_url_lacks_api_path("http://localhost:20128") is True
+    assert base_url_lacks_api_path("http://localhost:20128/") is True
+    assert base_url_lacks_api_path("http://localhost:20128/v1") is False
+    assert base_url_lacks_api_path("not a url") is False
 
 
 @pytest.mark.asyncio

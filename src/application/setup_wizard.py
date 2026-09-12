@@ -9,7 +9,11 @@ from typing import Any, Dict, List, Optional
 from src.application.config_manager import ConfigManager, RootConfig
 from src.infrastructure.ai.factory import create_ai_provider
 from src.domain.provider import PROVIDER_MODELS_CATALOG
-from src.infrastructure.ai.model_discovery import fetch_available_models_ex, normalize_base_url
+from src.infrastructure.ai.model_discovery import (
+    base_url_lacks_api_path,
+    fetch_available_models_ex,
+    normalize_base_url,
+)
 from src.infrastructure.telegram.adapter import TelegramAdapter
 
 # Model menus are derived from the shared catalog so the wizard can never drift
@@ -78,11 +82,12 @@ class SetupWizard:
             if normalized:
                 if normalized != raw.strip().rstrip("/"):
                     print(f"  → Menggunakan URL: {normalized}")
+                if base_url_lacks_api_path(normalized):
+                    print(
+                        "  ℹ️  URL ini belum punya path. Gateway OpenAI-compatible biasanya "
+                        "butuh suffix /v1\n     (contoh: http://localhost:20128/v1)."
+                    )
                 return normalized
-            print(
-                "  ✗ URL tidak valid. Contoh yang benar: http://localhost:20128/v1\n"
-                "    Pastikan ini URL gateway, BUKAN API key."
-            )
 
 
     def _prompt_choice(self, question: str, choices: list[str], default_idx: int = 0) -> str:
@@ -266,6 +271,9 @@ class SetupWizard:
                     break
                 else:
                     print(f"✗ Peringatan: Gagal memvalidasi kredensial ke {provider.upper()}.")
+                    detail = getattr(prov_inst, "last_error", None)
+                    if detail:
+                        print(f"  Detail: {detail}")
                     if not self._prompt_bool("Tetap gunakan model ini dan lanjutkan?", default=True):
                         continue
                     break

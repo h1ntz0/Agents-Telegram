@@ -43,6 +43,17 @@ def normalize_base_url(value: str) -> Optional[str]:
     return cleaned
 
 
+def base_url_lacks_api_path(value: str) -> bool:
+    """True when a base URL has no path, which usually means a missing /v1 suffix."""
+    normalized = normalize_base_url(value)
+    if not normalized:
+        return False
+    try:
+        return not urllib.parse.urlparse(normalized).path.strip("/")
+    except ValueError:
+        return False
+
+
 async def fetch_available_models_ex(
     provider_name: str,
     api_key: str = "",
