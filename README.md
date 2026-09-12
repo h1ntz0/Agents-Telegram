@@ -120,7 +120,7 @@ Slash commands auto-register with Telegram on startup for instant autocomplete m
 | `/memory` | — | View stored persistent user context and preferences | `/memory` |
 | `/reset` | — | Clear conversation context and active session history | `/reset` |
 | `/cancel` | — | Abort pending high-risk action or scheduled prompt | `/cancel` |
-| `/oc` | `[list\|attach\|detach\|new\|send]` | Remote-control active OpenCode terminal session | `/oc attach ses_123` |
+| `/oc` | `[list\|attach\|detach\|new\|send\|stop\|model\|agent\|agents\|models\|commands\|skills\|diff]` | Mirror and control local OpenCode session (stream, switch model/agent, approve permissions) | `/oc attach ses_123` |
 | `/help` | — | Display complete command reference | `/help` |
 
 ---
@@ -190,6 +190,19 @@ Send `/sdlc <task description>` in Telegram to trigger the 4-phase automated lif
 ```
 
 Live progress edits update the message directly in Telegram (`25%` → `50%` → `75%` → `100%`).
+
+---
+
+## 🔗 OpenCode Mirror Mode
+
+Telegram Agent can mirror a locally running OpenCode coding agent (`opencode serve`) live in chat. The local OpenCode session is itself backed by the user's 9router gateway:
+
+* **Session Attachment**: Connect to a running session via `/oc attach <session_id>`. Once attached, every message sent in Telegram drives that OpenCode session directly.
+* **Live Status Card**: Real-time progress updates stream in Telegram displaying current tool calls, step execution, and token progress.
+* **Final Delivery**: When execution completes, the full synthesized answer is posted as a standalone message.
+* **Interrupt & Control**: Send `/oc stop` to immediately interrupt the active turn. Inspect or switch active model and agent directly via `/oc model` and `/oc agent`.
+* **Interactive Permission Gate**: Destructive or high-risk operations surface inline Telegram buttons with **Approve Once**, **Always Allow**, and **Reject** choices.
+* **Loopback & Credential Safety**: The local OpenCode server must run strictly on loopback (`127.0.0.1`), and the bot rejects external hosts. The bot never forwards the 9router API key to the OpenCode instance.
 
 ---
 

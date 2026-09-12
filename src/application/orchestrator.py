@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 from src.application.config_manager import RootConfig
 from src.infrastructure.opencode.bridge import OpenCodeBridge, OpenCodeError
+from src.infrastructure.opencode.mirror import OpenCodeMirror
 from src.application.multiagent_sdlc import MultiAgentSDLC
 from src.domain.agent import AgentState, Message, PendingConfirmation, Role, Session, ToolCall, ToolResponse
 from src.domain.provider import AIProvider, CompletionRequest, PROVIDER_MODELS_CATALOG
@@ -63,9 +64,31 @@ class AgentOrchestrator:
         self._user_active_persona: Dict[int, str] = {}
         self._user_active_model: Dict[int, str] = {}
         self._user_active_oc_session: Dict[int, str] = {}
+        self._oc_mirrors: Dict[int, OpenCodeMirror] = {}
         self.opencode_bridge = OpenCodeBridge(
             base_url=getattr(config.ai, "opencode_server_url", "http://127.0.0.1:4096")
         )
+
+    def _get_oc_mirror(self, user_id: int, chat_id: int) -> Optional[OpenCodeMirror]:
+        """Return the existing OpenCodeMirror for the attached session or create+store one."""
+        sid = self._user_active_oc_session.get(user_id)
+        if not sid:
+            return None
+        existing = self._oc_mirrors.get(user_id)
+        if (
+            existing is not None
+            and getattr(existing, "session_id", sid) == sid
+            and getattr(existing, "chat_id", chat_id) == chat_id
+        ):
+            return existing
+        mirror = OpenCodeMirror(
+            bridge=self.opencode_bridge,
+            telegram=self.telegram,
+            session_id=sid,
+            chat_id=chat_id,
+        )
+        self._oc_mirrors[user_id] = mirror
+        return mirror
 
     async def _get_user_model(self, user_id: int) -> str:
         """Retrieve user's chosen model from runtime cache or SQLite persistence."""
@@ -255,6 +278,7 @@ class AgentOrchestrator:
                 "/remind <time> <text> - Set a reminder\n"
                 "/chart <type> <labels> <values> - Generate chart\n"
                 "/sdlc <task> - Run full 4-stage SDLC\n"
+                "/oc - Remote & mirror OpenCode (stop/model/agent/list/attach)\n"
                 "/reset - Clear chat history context\n"
                 "/help - View all commands"
             )
@@ -273,6 +297,7 @@ class AgentOrchestrator:
                 "/chart <type> <labels> <values> - Generate QuickChart & ASCII chart\n"
                 "  • Example: `/chart bar Jan,Feb,Mar 10,25,18`\n"
                 "/sdlc <task> - Execute multi-agent development lifecycle\n"
+                "/oc [subcommand] - Control OpenCode session (stop/model/agent/agents/models/commands/skills/diff/list/attach)\n"
                 "/status - Runtime health and configuration overview\n"
                 "/settings - View current model and preferences\n"
                 "/tools - List active tools\n"
@@ -606,7 +631,15 @@ class AgentOrchestrator:
                 "• `/oc attach <id>` — Hubungkan bot ke sesi terminal OpenCode\n"
                 "• `/oc detach` — Lepas sesi yang sedang terhubung\n"
                 "• `/oc new [title]` — Buat sesi OpenCode baru dari Telegram\n"
-                "• `/oc send <prompt>` — Kirim pesan langsung ke sesi terminal"
+                "• `/oc send <prompt>` — Kirim pesan langsung ke sesi terminal\n"
+                "• `/oc stop` — Hentikan eksekusi turn yang sedang berjalan\n"
+                "• `/oc model <id> [providerID]` — Ganti model sesi OpenCode\n"
+                "• `/oc agent <name>` — Ganti agent sesi OpenCode\n"
+                "• `/oc agents` — Lihat daftar agent yang tersedia\n"
+                "• `/oc models` — Lihat daftar model yang tersedia\n"
+                "• `/oc commands` — Lihat daftar perintah OpenCode\n"
+                "• `/oc skills` — Lihat daftar skill OpenCode\n"
+                "• `/oc diff` — Lihat diff sesi OpenCode"
             )
             await self.telegram.send_message(chat_id, msg)
             return
@@ -644,6 +677,7 @@ class AgentOrchestrator:
                     await self.telegram.send_message(chat_id, f"Sesi `{target_sid}` tidak ditemukan di server OpenCode.")
                     return
                 self._user_active_oc_session[user_id] = target_sid
+                self._get_oc_mirror(user_id, chat_id)
                 title = session_data.get("title") or target_sid
                 await self.telegram.send_message(
                     chat_id,
@@ -656,6 +690,12 @@ class AgentOrchestrator:
             return
 
         elif subcmd == "detach":
+            if user_id in self._oc_mirrors:
+                mirror = self._oc_mirrors.pop(user_id)
+                try:
+                    await mirror.stop()
+                except Exception as e:
+                    logger.warning(f"Error stopping mirror on detach: {e}")
             if user_id in self._user_active_oc_session:
                 old_sid = self._user_active_oc_session.pop(user_id)
                 await self.telegram.send_message(chat_id, f"✓ Sesi `{old_sid}` telah dilepas. Bot kembali ke mode AI mandiri.")
@@ -670,6 +710,7 @@ class AgentOrchestrator:
                 new_sid = new_s.get("id")
                 if new_sid:
                     self._user_active_oc_session[user_id] = new_sid
+                    self._get_oc_mirror(user_id, chat_id)
                     await self.telegram.send_message(chat_id, f"✓ Sesi OpenCode baru dibuat & di-attach: `{new_sid}` ({title}).")
                 else:
                     await self.telegram.send_message(chat_id, "Sesi dibuat tetapi server tidak mengembalikan ID.")
@@ -698,6 +739,114 @@ class AgentOrchestrator:
                 await self.telegram.send_message(chat_id, f"**OpenCode (`{target_sid}`):**\n\n{clean_reply}")
             except Exception as e:
                 await self.telegram.send_message(chat_id, f"OpenCode Error: {str(e)}")
+            return
+
+        elif subcmd == "stop":
+            mirror = self._get_oc_mirror(user_id, chat_id)
+            if mirror is not None:
+                await mirror.stop()
+            elif current_attached:
+                try:
+                    await self.opencode_bridge.interrupt(current_attached)
+                except Exception:
+                    pass
+            await self.telegram.send_message(chat_id, "⏹️ Turn dihentikan.")
+            return
+
+        elif subcmd == "model":
+            if not current_attached:
+                await self.telegram.send_message(chat_id, "Tidak ada sesi OpenCode aktif. Jalankan `/oc new` atau `/oc attach <id>`.")
+                return
+            if not subargs:
+                await self.telegram.send_message(chat_id, "Penggunaan: `/oc model <id> [providerID]`")
+                return
+            m_parts = subargs.split(maxsplit=1)
+            model_id = m_parts[0].strip()
+            provider_id = m_parts[1].strip() if len(m_parts) > 1 else "9router"
+            try:
+                ok = await self.opencode_bridge.set_model(current_attached, model_id, provider_id)
+                if ok:
+                    await self.telegram.send_message(
+                        chat_id,
+                        f"✓ Model OpenCode untuk sesi `{current_attached}` disetel ke `{model_id}` ({provider_id}).",
+                    )
+                else:
+                    await self.telegram.send_message(chat_id, "Gagal mengubah model sesi OpenCode.")
+            except Exception as e:
+                await self.telegram.send_message(chat_id, f"Gagal mengubah model: {str(e)}")
+            return
+
+        elif subcmd == "agent":
+            if not current_attached:
+                await self.telegram.send_message(chat_id, "Tidak ada sesi OpenCode aktif. Jalankan `/oc new` atau `/oc attach <id>`.")
+                return
+            if not subargs:
+                await self.telegram.send_message(chat_id, "Penggunaan: `/oc agent <name>`")
+                return
+            agent_name = subargs.strip()
+            try:
+                ok = await self.opencode_bridge.set_agent(current_attached, agent_name)
+                if ok:
+                    await self.telegram.send_message(
+                        chat_id,
+                        f"✓ Agent OpenCode untuk sesi `{current_attached}` disetel ke `{agent_name}`.",
+                    )
+                else:
+                    await self.telegram.send_message(chat_id, "Gagal mengubah agent sesi OpenCode.")
+            except Exception as e:
+                await self.telegram.send_message(chat_id, f"Gagal mengubah agent: {str(e)}")
+            return
+
+        elif subcmd in ("agents", "models", "commands", "skills"):
+            await self.telegram.send_chat_action(chat_id, "typing")
+            try:
+                if subcmd == "agents":
+                    items = await self.opencode_bridge.list_agents()
+                    title = "OpenCode Agents"
+                elif subcmd == "models":
+                    items = await self.opencode_bridge.list_models()
+                    title = "OpenCode Models"
+                elif subcmd == "commands":
+                    items = await self.opencode_bridge.list_commands()
+                    title = "OpenCode Commands"
+                else:
+                    items = await self.opencode_bridge.list_skills()
+                    title = "OpenCode Skills"
+
+                if not items:
+                    await self.telegram.send_message(chat_id, f"Tidak ada {subcmd} yang ditemukan.")
+                    return
+
+                lines = [f"**{title}:**\n"]
+                for item in items[:20]:
+                    if isinstance(item, dict):
+                        item_id = item.get("id") or item.get("name") or item.get("title") or str(item)
+                        desc = item.get("description")
+                        if desc:
+                            lines.append(f"• `{item_id}` — {desc[:80]}")
+                        else:
+                            lines.append(f"• `{item_id}`")
+                    else:
+                        lines.append(f"• `{item}`")
+                await self.telegram.send_message(chat_id, "\n".join(lines))
+            except Exception as e:
+                await self.telegram.send_message(chat_id, f"Gagal mengambil daftar {subcmd}: {str(e)}")
+            return
+
+        elif subcmd == "diff":
+            if not current_attached:
+                await self.telegram.send_message(chat_id, "Tidak ada sesi OpenCode aktif. Jalankan `/oc attach <id>`.")
+                return
+            diff_fn = getattr(self.opencode_bridge, "get_diff", None) or getattr(self.opencode_bridge, "diff", None)
+            if callable(diff_fn):
+                try:
+                    diff_res = await diff_fn(current_attached)
+                    text_diff = str(diff_res) if diff_res else "Tidak ada perubahan."
+                    await self.telegram.send_message(chat_id, f"**Diff Sesi (`{current_attached}`):**\n\n`{text_diff}`")
+                except Exception as e:
+                    await self.telegram.send_message(chat_id, f"Gagal mengambil diff: {str(e)}")
+            else:
+                await self.telegram.send_message(chat_id, "Fitur diff belum tersedia di server OpenCode ini.")
             return
 
         else:
@@ -778,6 +927,61 @@ class AgentOrchestrator:
             await self.telegram.answer_callback_query(query_id, "Action cancelled.")
             await self.telegram.edit_message_text(chat_id, message_id, "Operation was cancelled.")
 
+        elif data_str.startswith("ocstop:"):
+            try:
+                sid = data_str.split(":", 1)[1].strip()
+                found_mirror = None
+                for m in self._oc_mirrors.values():
+                    if getattr(m, "session_id", None) == sid:
+                        found_mirror = m
+                        break
+                if found_mirror is not None:
+                    await found_mirror.stop()
+                elif hasattr(self.opencode_bridge, "interrupt"):
+                    try:
+                        await self.opencode_bridge.interrupt(sid)
+                    except Exception:
+                        pass
+                await self.telegram.answer_callback_query(query_id, "Dihentikan.")
+                if message_id:
+                    await self.telegram.edit_message_text(chat_id, message_id, "⏹️ Dihentikan.")
+            except Exception as e:
+                logger.error(f"Error handling ocstop callback: {e}")
+
+        elif data_str.startswith("ocperm:"):
+            try:
+                parts = data_str.split(":")
+                sid = None
+                reqid = None
+                reply = None
+                if len(parts) == 3:
+                    _, token, reply = parts
+                    for m in self._oc_mirrors.values():
+                        resolver = getattr(m, "resolve_permission_token", None)
+                        resolved = resolver(token) if resolver else None
+                        if resolved:
+                            sid = getattr(m, "session_id", None)
+                            reqid = resolved
+                            break
+                elif len(parts) == 4:
+                    _, sid, reqid, reply = parts
+                if reply in {"once", "always", "reject"} and sid and reqid:
+                    await self.opencode_bridge.reply_permission(sid, reqid, reply)
+                    await self.telegram.answer_callback_query(query_id, f"Permission: {reply}")
+                    reply_labels = {
+                        "once": "✅ Disetujui (once)",
+                        "always": "✅ Selalu diizinkan",
+                        "reject": "🚫 Ditolak",
+                    }
+                    if message_id:
+                        await self.telegram.edit_message_text(
+                            chat_id, message_id, reply_labels.get(reply, reply)
+                        )
+                else:
+                    await self.telegram.answer_callback_query(query_id, "Data callback tidak valid.")
+            except Exception as e:
+                logger.error(f"Error handling ocperm callback: {e}")
+
     async def _process_user_prompt(
         self,
         chat_id: int,
@@ -786,23 +990,13 @@ class AgentOrchestrator:
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Execute ReAct loop or forward to an attached OpenCode terminal session."""
-        # If a user has an OpenCode session attached, forward straight to the terminal
-        oc_sid = self._user_active_oc_session.get(user_id)
-        if oc_sid:
-            await self.telegram.send_chat_action(chat_id, "typing")
-            try:
-                reply_text = await self.opencode_bridge.send_message(oc_sid, prompt_text)
-                clean_reply = humanize_response(reply_text)
-            except OpenCodeError as e:
-                clean_reply = (
-                    f"Gagal menghubungi sesi OpenCode `{oc_sid}`: {str(e)}\n"
-                    "Ketik `/oc list` untuk daftar sesi, atau `/oc detach` untuk lepas."
-                )
-            except Exception as e:
-                clean_reply = f"Terminal error: {str(e)}"
-            await self.telegram.send_message(chat_id, clean_reply)
+        mirror = self._get_oc_mirror(user_id, chat_id)
+        if mirror is not None:
+            if mirror.is_running:
+                await self.telegram.send_message(chat_id, "⏳ Sesi OpenCode masih berjalan. Ketik /oc stop untuk menghentikannya.")
+                return
+            asyncio.create_task(mirror.run_prompt(prompt_text))
             return
-
         await self.telegram.send_chat_action(chat_id, "typing")
 
         session = await self.db.get_or_create_session(user_id, chat_id)

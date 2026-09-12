@@ -171,6 +171,109 @@ graph TD
 
 ---
 
+## OpenCode Mirror Mode
+
+The OpenCode Mirror Mode allows Telegram Agent to mirror and drive an active, locally running OpenCode coding agent session (`opencode serve`) directly from Telegram with real-time text streaming, tool call tracking, turn interruption, model/agent switching, and interactive permission handling. The local OpenCode agent itself runs backed by the user's 9router gateway (e.g. `aseli-combo` or custom provider profiles).
+
+### 1. Prerequisites
+
+* An active OpenCode server instance running on the local machine:
+  ```bash
+  opencode serve --port 4096 --hostname 127.0.0.1
+  ```
+* Loopback access: OpenCode must listen strictly on `127.0.0.1` (port `4096` by default). Remote or LAN IP addresses are rejected by the bridge.
+* Backend configuration: The local OpenCode server is configured to route LLM completions through the local 9router gateway.
+
+### 2. HTTP Endpoints
+
+The bridge interacts with OpenCode via the following local REST and Server-Sent Events (SSE) endpoints:
+
+| Endpoint | Method | Payload / Response | Description |
+| :--- | :---: | :--- | :--- |
+| `/api/session/{id}/prompt` | `POST` | `{"prompt":{"text":"..."}}` (returns 200) | Submits a prompt to the session; returns immediately without blocking. |
+| `/api/session/{id}/event` | `GET` | SSE stream: `data: {"id","type","durable","data"}` | Streams real-time session execution events. |
+| `/api/session/{id}/interrupt` | `POST` | `empty` (returns 204) | Immediately stops/aborts current execution turn. |
+| `/api/session/{id}/model` | `POST` | `{"model":{"id":"...","providerID":"..."}}` (returns 204) | Switches the active language model for the session. |
+| `/api/session/{id}/agent` | `POST` | `{"agent":"..."}` (returns 204) | Switches the active agent persona (e.g. `sisyphus`). |
+| `/api/session/{id}/permission/{req}/reply` | `POST` | `{"reply":"once"\|"always"\|"reject"}` (returns 204) | Relays user confirmation for guarded tool or shell actions. |
+| `/api/session/{id}/message` | `GET` | `{"data":[{...content[]...}]}` | Fetches full message history and final assistant response. |
+| `/api/agent` | `GET` | List of available agent objects | Queries registered OpenCode agent personas. |
+| `/api/model` | `GET` | List of configured model profiles | Queries available models and upstream provider IDs. |
+| `/api/command` | `GET` | List of workspace commands | Queries custom slash commands configured in OpenCode. |
+| `/api/skill` | `GET` | List of workspace skills | Queries custom skills available in the environment. |
+
+### 3. Event Flow & Consumed Event Types
+
+Execution state is consumed over the SSE stream (`/api/session/{id}/event`). The bridge processes the following event lifecycle:
+
+```mermaid
+sequenceDiagram
+    participant TG as 👤 Telegram User / Bot
+    participant Bridge as 🌉 OpenCode Bridge
+    participant OC as 💻 OpenCode Server (127.0.0.1)
+
+    TG->>Bridge: Send message or /oc send
+    Bridge->>OC: POST /api/session/{id}/prompt
+    OC-->>Bridge: 200 OK (admitted)
+    Bridge->>OC: GET /api/session/{id}/event (SSE)
+    loop Event Processing
+        OC-->>Bridge: session.next.step.started
+        OC-->>Bridge: session.next.tool.called / progress
+        Bridge->>TG: Edit status card (tool & step progress)
+        OC-->>Bridge: session.next.tool.success / failed
+        OC-->>Bridge: session.next.text.ended
+        OC-->>Bridge: session.next.step.ended (tokens, cost)
+    end
+    Bridge->>OC: GET /api/session/{id}/message
+    Bridge->>TG: Send complete assistant response
+```
+
+* **Text Events**:
+  * `session.next.text.started`: Agent initiated text generation.
+  * `session.next.text.ended`: Chunk or turn text completed with `data.text`.
+* **Tool & Command Events**:
+  * `session.next.tool.called`: Tool invocation initiated with tool name and arguments.
+  * `session.next.tool.progress`: Intermediate output from long-running tool operations.
+  * `session.next.tool.success`: Tool execution finished successfully.
+  * `session.next.tool.failed`: Tool execution failed with an error payload.
+  * `session.next.shell.started`: Shell command invocation started.
+* **Step & Turn Lifecycle**:
+  * `session.next.prompt.admitted` / `session.next.prompted`: Prompt queued and accepted by agent.
+  * `session.next.step.started`: Execution step initiated.
+  * `session.next.step.ended`: Step completed with `finish` reason, token counts, and cost metadata.
+  * `session.next.step.failed`: Step encountered an unrecoverable failure.
+
+### 4. Command Reference
+
+The `/oc` command provides full control of local OpenCode sessions directly from Telegram:
+
+| Command | Arguments | Description |
+| :--- | :--- | :--- |
+| `/oc list` | — | List all active and recent OpenCode sessions. |
+| `/oc attach` | `<session_id>` | Attach chat to an active OpenCode session. Future chat messages drive this session. |
+| `/oc detach` | — | Detach from active mirrored session; revert chat to standard bot orchestrator. |
+| `/oc new` | `[title]` | Create a new OpenCode session and attach to it immediately. |
+| `/oc send` | `<prompt>` | Dispatch a one-off prompt to an attached or specified session. |
+| `/oc stop` | — | Interrupt active tool execution or prompt generation turn immediately. |
+| `/oc model` | `[model_id] [provider_id]` | Inspect current model or switch to a target model (e.g. `/oc model aseli-combo 9router`). |
+| `/oc models` | — | List available models provided by OpenCode and the underlying 9router gateway. |
+| `/oc agent` | `[agent_name]` | View active agent or switch persona (e.g. `/oc agent sisyphus`). |
+| `/oc agents` | — | List all available agent personas registered in OpenCode. |
+| `/oc commands` | — | List available custom slash commands in OpenCode. |
+| `/oc skills` | — | List available skills registered in OpenCode workspace. |
+| `/oc diff` | — | View unstaged changes and git working tree diff from the active session. |
+
+### 5. Safety & Security Model
+
+OpenCode Mirror Mode operates under a defense-in-depth safety architecture:
+
+* **Loopback-Only Guard**: The bridge strictly connects to `127.0.0.1` or `localhost`. Any attempt to configure or route to remote IP addresses, LAN interfaces, or external domains is rejected before request dispatch.
+* **Opt-In Attachment**: Mirroring is disabled by default. The Telegram bot only relays messages to OpenCode when an explicit `/oc attach <session_id>` or `/oc new` command is issued for that chat.
+* **Zero Credential Forwarding**: The Telegram bot communicates solely over the unauthenticated local HTTP port (4096). The user's 9router API key and Telegram bot token are never forwarded, logged, or exposed to the OpenCode daemon.
+* **Permission Relay**: When OpenCode triggers a protected or dangerous operation (such as shell commands or filesystem mutations), it generates a permission request event. The bot intercepts this and renders an inline Telegram confirmation keyboard with **Approve Once**, **Always Allow**, and **Reject** buttons, forwarding the user's decision to `POST /api/session/{id}/permission/{req}/reply`.
+
+---
+
 ## Implementing a Custom Tool
 
 To add a new tool to the agent runtime:
