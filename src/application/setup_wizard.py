@@ -8,86 +8,15 @@ import sys
 from typing import Any, Dict, List, Optional
 from src.application.config_manager import ConfigManager, RootConfig
 from src.infrastructure.ai.factory import create_ai_provider
-from src.infrastructure.ai.model_discovery import fetch_available_models
+from src.domain.provider import PROVIDER_MODELS_CATALOG
+from src.infrastructure.ai.model_discovery import fetch_available_models_ex, normalize_base_url
 from src.infrastructure.telegram.adapter import TelegramAdapter
 
+# Model menus are derived from the shared catalog so the wizard can never drift
+# out of sync with the providers' real model list.
 PROVIDER_MODEL_MENUS: Dict[str, List[str]] = {
-    "9router": [
-        "ag/gemini-3.7-flash-high",
-        "ds/deepseek-v4-flash",
-        "ds/deepseek-chat",
-        "ds/deepseek-reasoner",
-        "ag/claude-sonnet-4-6",
-        "cx/gpt-5.6-sol",
-        "cx/gpt-5.4",
-        "ag/gpt-oss-120b-medium",
-        "Ketik nama model manual (Custom)"
-    ],
-    "deepseek": [
-        "deepseek-chat",
-        "deepseek-reasoner",
-        "deepseek-coder",
-        "Ketik nama model manual (Custom)"
-    ],
-    "anthropic": [
-        "claude-3-5-sonnet-20241022",
-        "claude-3-7-sonnet-20250219",
-        "claude-3-5-haiku-20241022",
-        "claude-3-opus-20240229",
-        "Ketik nama model manual (Custom)"
-    ],
-    "google": [
-        "gemini-2.0-flash",
-        "gemini-1.5-pro",
-        "gemini-1.5-flash",
-        "Ketik nama model manual (Custom)"
-    ],
-    "openai": [
-        "gpt-4o",
-        "gpt-4o-mini",
-        "o1",
-        "o3-mini",
-        "Ketik nama model manual (Custom)"
-    ],
-    "openrouter": [
-        "anthropic/claude-3.5-sonnet",
-        "deepseek/deepseek-r1",
-        "deepseek/deepseek-chat",
-        "openai/gpt-4o",
-        "google/gemini-2.0-flash-001",
-        "meta-llama/llama-3.3-70b-instruct",
-        "Ketik nama model manual (Custom)"
-    ],
-    "ollama": [
-        "llama3.2",
-        "deepseek-r1",
-        "qwen2.5-coder",
-        "mistral",
-        "Ketik nama model manual (Custom)"
-    ],
-    "opencode-zen": [
-        "muse-spark-1.2-contributor-free",
-        "oc/mimo-v2.5-free",
-        "oc/big-pickle",
-        "oc/hy3-free",
-        "zen-code-1",
-        "zen-instruct-preview",
-        "Ketik nama model manual (Custom)"
-    ],
-    "opencode-go": [
-        "go-code-fast",
-        "go-flash",
-        "go-sonnet",
-        "go-chat",
-        "go-coder-preview",
-        "Ketik nama model manual (Custom)"
-    ],
-    "custom": [
-        "gpt-4o",
-        "claude-3-5-sonnet-20241022",
-        "deepseek-chat",
-        "Ketik nama model manual (Custom)"
-    ]
+    provider: list(models) + ["Ketik nama model manual (Custom)"]
+    for provider, models in PROVIDER_MODELS_CATALOG.items()
 }
 
 
@@ -141,6 +70,20 @@ class SetupWizard:
         except (KeyboardInterrupt, EOFError):
             print("\nSetup dibatalkan.")
             sys.exit(1)
+    def _prompt_url(self, question: str, default: str = "") -> str:
+        """Prompt for a base URL, validating and normalizing it with retry."""
+        while True:
+            raw = self._prompt(question, default)
+            normalized = normalize_base_url(raw)
+            if normalized:
+                if normalized != raw.strip().rstrip("/"):
+                    print(f"  → Menggunakan URL: {normalized}")
+                return normalized
+            print(
+                "  ✗ URL tidak valid. Contoh yang benar: http://localhost:20128/v1\n"
+                "    Pastikan ini URL gateway, BUKAN API key."
+            )
+
 
     def _prompt_choice(self, question: str, choices: list[str], default_idx: int = 0) -> str:
         """Prompt user to choose from a list of options."""
@@ -242,22 +185,22 @@ class SetupWizard:
         base_url = ""
         if provider == "9router":
             default_9r_url = existing_cfg.ai.base_url if (existing_cfg and existing_cfg.ai.base_url) else "http://localhost:20128/v1"
-            base_url = self._prompt("9router Gateway URL", default_9r_url)
+            base_url = self._prompt_url("9router Gateway URL", default_9r_url)
             env_dict["AI_BASE_URL"] = base_url
         elif provider == "deepseek":
             default_ds_url = existing_cfg.ai.base_url if (existing_cfg and existing_cfg.ai.base_url) else "https://api.deepseek.com/v1"
-            base_url = self._prompt("DeepSeek API URL", default_ds_url)
+            base_url = self._prompt_url("DeepSeek API URL", default_ds_url)
             env_dict["AI_BASE_URL"] = base_url
         elif provider == "opencode-zen":
             default_zen_url = existing_cfg.ai.base_url if (existing_cfg and existing_cfg.ai.base_url) else "https://api.opencode.ai/v1"
-            base_url = self._prompt("OpenCode Zen API Base URL", default_zen_url)
+            base_url = self._prompt_url("OpenCode Zen API Base URL", default_zen_url)
             env_dict["AI_BASE_URL"] = base_url
         elif provider == "opencode-go":
             default_go_url = existing_cfg.ai.base_url if (existing_cfg and existing_cfg.ai.base_url) else "https://go.opencode.ai/v1"
-            base_url = self._prompt("OpenCode Go API Base URL", default_go_url)
+            base_url = self._prompt_url("OpenCode Go API Base URL", default_go_url)
             env_dict["AI_BASE_URL"] = base_url
         elif provider == "custom":
-            base_url = self._prompt("Custom OpenAI-compatible Base URL (contoh: http://localhost:8000/v1)", existing_cfg.ai.base_url if existing_cfg else "")
+            base_url = self._prompt_url("Custom OpenAI-compatible Base URL (contoh: http://localhost:8000/v1)", existing_cfg.ai.base_url if existing_cfg else "")
             env_dict["AI_BASE_URL"] = base_url
 
         while True:
@@ -266,7 +209,7 @@ class SetupWizard:
                 api_key = self._prompt_secret(f"{provider.upper()} API Key", default_key)
                 env_dict["AI_API_KEY"] = api_key
             elif provider == "9router":
-                default_key = existing_cfg.ai.api_key if existing_cfg else "sk-REVOKED-NINE-ROUTER-KEY-0002"
+                default_key = existing_cfg.ai.api_key if existing_cfg else ""
                 api_key = self._prompt("9router API Key (opsional / password untuk gateway)", default_key)
                 env_dict["AI_API_KEY"] = api_key
             else:
@@ -275,15 +218,23 @@ class SetupWizard:
 
             # Dynamic Live Model Discovery from Provider API
             print(f"\n→ Mengambil daftar model yang tersedia dari {provider.upper()}...")
-            discovered = await fetch_available_models(provider, api_key=api_key, base_url=base_url)
+            discovered, live_ok = await fetch_available_models_ex(provider, api_key=api_key, base_url=base_url)
             clean_discovered = [m for m in discovered if m != "Ketik nama model manual (Custom)"]
             if not clean_discovered:
                 clean_discovered = [m for m in PROVIDER_MODEL_MENUS.get(provider, []) if m != "Ketik nama model manual (Custom)"]
-            
+
+            if not live_ok:
+                print(f"⚠️  Gagal mengambil daftar model LIVE dari {provider.upper()}.")
+                print(
+                    "    Menampilkan daftar CADANGAN yang bisa usang — periksa URL gateway dan API key."
+                )
+                print(f"    Gateway dipakai: {base_url or '(default provider)'}")
+
             model_options = clean_discovered + ["Ketik nama model manual (Custom)"]
             default_model = existing_cfg.ai.model if (existing_cfg and existing_cfg.ai.model in model_options) else model_options[0]
 
-            print(f"\n? Pilih Model AI untuk {provider.upper()} ({len(clean_discovered)} model ditemukan):")
+            source = "LIVE" if live_ok else "cadangan/offline"
+            print(f"\n? Pilih Model AI untuk {provider.upper()} ({len(clean_discovered)} model — {source}):")
             for i, opt in enumerate(model_options, 1):
                 marker = ">" if opt == default_model else " "
                 print(f"  {marker} {i}. {opt}")
