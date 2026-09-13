@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          version = tag.lstrip("vV")
+
+          changelog = Path("CHANGELOG.md")
+          if not changelog.is_file():
+              print(f"::error::CHANGELOG.md is missing; cannot build release notes for {tag}")
+              sys.exit(1)
+
+          lines = changelog.read_text(encoding="utf-8").splitlines()
+          pattern = re.compile(rf"^##\s*\[?v?{re.escape(version)}\]?(?![\d.])")
+          start = next((i for i, line in enumerate(lines) if pattern.match(line)), None)
+          if start is None:
+              print(f"::error::CHANGELOG.md has no '## {version}' section for tag {tag}")
+              sys.exit(1)
+
+          end = next(
+              (i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")),
+              len(lines),
+          )
+          body = "\n".join(lines[start + 1 : end]).strip()
+          if not body:
+              print(f"::error::CHANGELOG.md section for {version} is empty")
+              sys.exit(1)
+
+          Path("release_notes.md").write_text(body + "\n", encoding="utf-8")
+          print(f"Extracted {len(body.splitlines())} line(s) of release notes for {tag}")
+          PY
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

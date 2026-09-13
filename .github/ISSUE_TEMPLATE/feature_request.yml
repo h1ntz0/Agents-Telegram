@@ -1,0 +1,38 @@
+name: Feature request
+description: Propose an improvement or a new capability
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping shape the platform. Please describe the problem first —
+        solutions are easier to evaluate once the need is clear.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that is currently hard, missing, or painful?
+      placeholder: When I run the agent on a headless VPS I cannot…
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed solution
+      description: What would you like to happen? Include a CLI flag, config key, or command sketch if you have one.
+      placeholder: Add a `--model` flag to `python -m src setup` so…
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives-considered
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you weighed, and why you rejected them.
+      placeholder: I could edit `.env` by hand, but …
+    validations:
+      required: true

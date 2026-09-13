@@ -1,34 +1,168 @@
 #!/usr/bin/env bash
-set -e
+#
+# Telegram Agent Platform -- environment bootstrap and setup-wizard launcher.
+#
+# Works on Linux, macOS and Git-Bash/MSYS/Cygwin on Windows.
+#
+#   ./scripts/setup                                        # interactive wizard
+#   ./scripts/setup --advanced                             # wizard, advanced questions
+#   ./scripts/setup -y --bot-token 123:ABC --provider openai \
+#                   --model gpt-4o-mini --api-key sk-...    # unattended (Docker/CI)
+#
+# Every argument is forwarded verbatim to `python -m src setup`, and the wizard's
+# exit code becomes this script's exit code.
+
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-cd "$ROOT_DIR"
+cd "$ROOT_DIR" || exit 1
 
-# 1. Locate Python 3.12+
-PYTHON_BIN=""
-if command -v python3.12 >/dev/null 2>&1; then
-    PYTHON_BIN="python3.12"
-elif command -v python3 >/dev/null 2>&1; then
-    PYTHON_BIN="python3"
-elif command -v python >/dev/null 2>&1; then
-    PYTHON_BIN="python"
-else
-    echo "Error: Python 3.12+ is required but not found in PATH."
+VENV_DIR="$ROOT_DIR/.venv"
+DEP_IMPORTS="import httpx, pydantic, yaml, aiosqlite"
+FALLBACK_DEPS=(pydantic">=2.7.0" pyyaml">=6.0.1" python-dotenv">=1.0.1" httpx">=0.27.0" aiosqlite">=0.20.0")
+
+info() { printf '[INFO] %s\n' "$1"; }
+ok()   { printf '[ OK ] %s\n' "$1"; }
+warn() { printf '[WARN] %s\n' "$1"; }
+
+pause_if_needed() {
+    # Keep the window open when the script was launched by a double-click.
+    # start/doctor export AGENT_LAUNCHER_NO_PAUSE=1 so a nested bootstrap
+    # never blocks waiting for a keypress.
+    if [ "${AGENT_LAUNCHER_NO_PAUSE:-0}" = "1" ]; then
+        return 0
+    fi
+    if [ -t 0 ]; then
+        printf '\nPress Enter to close...'
+        read -r _ || true
+    fi
+}
+
+die() {
+    printf '[ERROR] %s\n' "$1" >&2
+    shift
+    while [ "$#" -gt 0 ]; do
+        printf '        %s\n' "$1" >&2
+        shift
+    done
+    pause_if_needed
     exit 1
+}
+
+python_version_ok() {
+    "$1" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)' >/dev/null 2>&1
+}
+
+find_system_python() {
+    local candidate
+    for candidate in python3.13 python3.12 python3 python; do
+        if command -v "$candidate" >/dev/null 2>&1 && python_version_ok "$candidate"; then
+            printf '%s' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+detect_venv_python() {
+    # Linux/macOS venvs use bin/, Windows (Git-Bash, PowerShell, cmd) uses Scripts/.
+    if [ -x "$VENV_DIR/bin/python" ]; then
+        printf '%s' "$VENV_DIR/bin/python"
+        return 0
+    fi
+    if [ -x "$VENV_DIR/Scripts/python.exe" ]; then
+        printf '%s' "$VENV_DIR/Scripts/python.exe"
+        return 0
+    fi
+    return 1
+}
+
+deps_ok() {
+    "$PY_BIN" -c "$DEP_IMPORTS" >/dev/null 2>&1
+}
+
+install_deps() {
+    if ! "$PY_BIN" -m pip --version >/dev/null 2>&1; then
+        info "pip is missing -- bootstrapping it with ensurepip ..."
+        "$PY_BIN" -m ensurepip --upgrade >/dev/null 2>&1 || true
+    fi
+    "$PY_BIN" -m pip install --quiet --upgrade pip >/dev/null 2>&1 || true
+    if ! "$PY_BIN" -m pip install --quiet -e .; then
+        warn "Editable install failed -- installing the runtime packages directly ..."
+        "$PY_BIN" -m pip install --quiet "${FALLBACK_DEPS[@]}" || return 1
+    fi
+    deps_ok
+}
+
+# ---------------------------------------------------------------- interpreter
+PY_BIN="$(detect_venv_python || true)"
+
+if [ -n "$PY_BIN" ]; then
+    ok "Using the existing virtual environment ($PY_BIN)"
+else
+    SYSTEM_PY="$(find_system_python || true)"
+    if [ -z "$SYSTEM_PY" ]; then
+        FOUND=""
+        for candidate in python3.13 python3.12 python3 python; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+                FOUND="$candidate ($("$candidate" -V 2>&1))"
+                break
+            fi
+        done
+        if [ -n "$FOUND" ]; then
+            die "Found $FOUND, but the Telegram Agent needs Python 3.12 or newer." \
+                "Install a supported interpreter, then run ./scripts/setup again:" \
+                "  Debian/Ubuntu : sudo apt update && sudo apt install -y python3 python3-venv python3-pip" \
+                "  Fedora/RHEL   : sudo dnf install -y python3 python3-pip" \
+                "  macOS         : brew install python@3.12" \
+                "  Windows       : winget install -e --id Python.Python.3.12   (then use Git-Bash)"
+        fi
+        die "Python 3.12 or newer was not found on PATH." \
+            "Install it, then run ./scripts/setup again:" \
+            "  Debian/Ubuntu : sudo apt update && sudo apt install -y python3 python3-venv python3-pip" \
+            "  Fedora/RHEL   : sudo dnf install -y python3 python3-pip" \
+            "  macOS         : brew install python@3.12" \
+            "  Windows       : winget install -e --id Python.Python.3.12   (then use Git-Bash)"
+    fi
+
+    info "Creating the virtual environment in $VENV_DIR ..."
+    if ! "$SYSTEM_PY" -m venv "$VENV_DIR"; then
+        die "Could not create the virtual environment with $SYSTEM_PY." \
+            "Make sure the venv module is available (Debian/Ubuntu: sudo apt install python3-venv)" \
+            "and that you are working in a folder you own."
+    fi
+
+    PY_BIN="$(detect_venv_python || true)"
+    if [ -z "$PY_BIN" ]; then
+        die "The virtual environment was created but contains no Python interpreter." \
+            "Delete the .venv folder and run ./scripts/setup again."
+    fi
+    ok "Virtual environment created ($PY_BIN)"
 fi
 
-# 2. Check / Create Virtual Environment
-if [ ! -d ".venv" ] || [ ! -f ".venv/bin/python" ]; then
-    echo "Creating virtual environment in .venv..."
-    $PYTHON_BIN -m venv .venv
+# ---------------------------------------------------------------- dependencies
+if ! deps_ok; then
+    info "Installing project dependencies (this may take a minute) ..."
+    if ! install_deps; then
+        die "The dependencies could not be installed." \
+            "Check your internet connection and try again:" \
+            "  $PY_BIN -m pip install -e ."
+    fi
 fi
 
-# 3. Ensure Dependencies are installed
-if ! ./.venv/bin/python -c "import httpx, pydantic, yaml, aiosqlite" >/dev/null 2>&1; then
-    echo "Installing missing dependencies..."
-    ./.venv/bin/pip install --quiet --upgrade pip
-    ./.venv/bin/pip install --quiet -e .
+# ------------------------------------------------------------------- the wizard
+info "Launching the setup wizard ..."
+printf '\n'
+"$PY_BIN" -m src setup "$@"
+STATUS=$?
+
+if [ "$STATUS" -ne 0 ]; then
+    printf '\n[ERROR] The setup wizard exited with code %s.\n' "$STATUS" >&2
+    printf '        Fix the problem above, then run ./scripts/setup again.\n' >&2
+    pause_if_needed
+    exit "$STATUS"
 fi
 
-exec ./.venv/bin/python -m src setup "$@"
+printf '\n[ OK ] Setup complete. Start the agent with: ./scripts/start\n'
+exit 0

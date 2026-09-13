@@ -1,0 +1,55 @@
+# Build context exclusions -- keeps the image small and secrets out of the daemon.
+
+# Version control and CI
+.git/
+.github/
+.gitignore
+.editorconfig
+
+# Virtual environments and local interpreters
+.venv/
+venv/
+ENV/
+env/
+
+# Python caches and build artefacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+build/
+dist/
+.eggs/
+wheels/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.codegraph/
+.omo/
+
+# Not needed at runtime
+tests/
+docs/
+assets/
+logs/
+*.log
+
+# Local state, secrets and backups (never ship these to the daemon)
+data/*.db*
+data/*.sqlite*
+data/memory/
+data/sessions/
+.env
+.env.*
+!.env.example
+backup_agent_*.tar.gz
+secrets.yaml
+*.pem
+*.key
+*.cert

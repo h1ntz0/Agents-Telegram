@@ -1,14 +1,34 @@
 #!/usr/bin/env bash
-set -e
+#
+# Telegram Agent Platform -- stop the background runtime.
+#
+#   ./scripts/stop
+#
+# This is a thin forwarder: `python -m src stop` owns the PID file and the
+# process shutdown, so the CLI stays the single source of truth. The child's
+# exit code is propagated (0 when stopped or nothing was running).
+
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-cd "$ROOT_DIR"
+cd "$ROOT_DIR" || exit 1
 
-if [ -f "$ROOT_DIR/.venv/bin/python" ]; then
-    PYTHON_EXEC="$ROOT_DIR/.venv/bin/python"
-else
+VENV_DIR="$ROOT_DIR/.venv"
+
+if [ -x "$VENV_DIR/Scripts/python.exe" ]; then
+    PYTHON_EXEC="$VENV_DIR/Scripts/python.exe"
+elif [ -x "$VENV_DIR/bin/python" ]; then
+    PYTHON_EXEC="$VENV_DIR/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
     PYTHON_EXEC="python3"
+elif command -v python >/dev/null 2>&1; then
+    PYTHON_EXEC="python"
+else
+    printf '[ERROR] No Python interpreter was found.\n' >&2
+    printf '        Run ./scripts/setup first.\n' >&2
+    exit 1
 fi
-export PYTHONPATH="$ROOT_DIR"
-exec "$PYTHON_EXEC" -m src.interfaces.cli.main stop "$@"
+
+"$PYTHON_EXEC" -m src stop "$@"
+exit $?

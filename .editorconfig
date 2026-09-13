@@ -1,0 +1,33 @@
+# EditorConfig — https://editorconfig.org
+# Applies to every editor that supports the standard (VS Code, PyCharm, VS, Vim…).
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{py,pyi}]
+indent_style = space
+indent_size = 4
+
+[*.{yml,yaml,json,jsonc,md,markdown,toml,ini,cfg}]
+indent_style = space
+indent_size = 2
+
+# Keep Markdown hard line breaks (two trailing spaces) intact.
+[*.{md,markdown}]
+trim_trailing_whitespace = false
+
+# Windows batch files require CRLF line endings and tolerate tabs well.
+[*.{bat,cmd}]
+indent_style = tab
+indent_size = tab
+end_of_line = crlf
+
+# PowerShell runs with CRLF on Windows and accepts LF elsewhere; CRLF is safest.
+[*.ps1]
+end_of_line = crlf

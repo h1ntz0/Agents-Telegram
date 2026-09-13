@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/h1ntz0/Agents-Telegram/security/policy
+    about: Do not open a public issue for security problems — see SECURITY.md for the private reporting process.
+  - name: Setup and configuration help
+    url: https://github.com/h1ntz0/Agents-Telegram/blob/main/README.md
+    about: Installation, configuration and troubleshooting steps live in the README.

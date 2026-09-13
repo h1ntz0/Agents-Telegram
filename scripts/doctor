@@ -1,13 +1,87 @@
 #!/usr/bin/env bash
-set -e
+#
+# Telegram Agent Platform -- environment diagnosis.
+#
+#   ./scripts/doctor            # run every check
+#
+# A missing virtual environment or missing dependencies are bootstrapped through
+# ./scripts/setup. Arguments are forwarded to `python -m src doctor` and the
+# child's exit code is propagated: 0 when every check passes, 1 on any FAIL.
+
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-cd "$ROOT_DIR"
+cd "$ROOT_DIR" || exit 1
 
-if [ ! -d ".venv" ]; then
-    echo "Virtual environment not found. Running setup..."
-    ./scripts/setup
+VENV_DIR="$ROOT_DIR/.venv"
+DEP_IMPORTS="import httpx, pydantic, yaml, aiosqlite"
+
+pause_if_needed() {
+    # Keep the window open when the script was launched by a double-click.
+    if [ "${AGENT_LAUNCHER_NO_PAUSE:-0}" = "1" ]; then
+        return 0
+    fi
+    if [ -t 0 ]; then
+        printf '\nPress Enter to close...'
+        read -r _ || true
+    fi
+}
+
+detect_venv_python() {
+    # Linux/macOS venvs use bin/, Windows (Git-Bash, PowerShell, cmd) uses Scripts/.
+    if [ -x "$VENV_DIR/bin/python" ]; then
+        printf '%s' "$VENV_DIR/bin/python"
+        return 0
+    fi
+    if [ -x "$VENV_DIR/Scripts/python.exe" ]; then
+        printf '%s' "$VENV_DIR/Scripts/python.exe"
+        return 0
+    fi
+    return 1
+}
+
+deps_ok() {
+    [ -n "$PY_BIN" ] && "$PY_BIN" -c "$DEP_IMPORTS" >/dev/null 2>&1
+}
+
+# ------------------------------------------------------------------ bootstrap
+PY_BIN="$(detect_venv_python || true)"
+
+if [ -z "$PY_BIN" ]; then
+    NEED_SETUP="Virtual environment not found."
+elif ! deps_ok; then
+    NEED_SETUP="Dependencies are missing."
 fi
 
-exec ./.venv/bin/python -m src doctor "$@"
+if [ -n "${NEED_SETUP:-}" ]; then
+    printf '[INFO] %s Running scripts/setup first ...\n\n' "$NEED_SETUP"
+    AGENT_LAUNCHER_NO_PAUSE=1 bash "$SCRIPT_DIR/setup"
+    SETUP_STATUS=$?
+    if [ "$SETUP_STATUS" -ne 0 ]; then
+        printf '\n[ERROR] Setup did not complete (exit code %s).\n' "$SETUP_STATUS" >&2
+        printf '        Run ./scripts/setup manually, then retry ./scripts/doctor.\n' >&2
+        pause_if_needed
+        exit "$SETUP_STATUS"
+    fi
+    PY_BIN="$(detect_venv_python || true)"
+    if ! deps_ok; then
+        printf '\n[ERROR] Setup finished but the environment is still not usable.\n' >&2
+        printf '        Run ./scripts/setup manually to see the full details.\n' >&2
+        pause_if_needed
+        exit 1
+    fi
+fi
+
+# --------------------------------------------------------------------- doctor
+printf '[INFO] Running diagnostics ...\n'
+"$PY_BIN" -m src doctor "$@"
+STATUS=$?
+
+if [ "$STATUS" -ne 0 ]; then
+    printf '\n[ERROR] At least one diagnostic check failed (exit code %s).\n' "$STATUS" >&2
+    printf '        Fix the failing checks above, then run ./scripts/doctor again.\n' >&2
+    pause_if_needed
+fi
+
+exit "$STATUS"

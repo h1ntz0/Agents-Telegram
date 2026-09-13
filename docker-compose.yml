@@ -1,21 +1,75 @@
-version: "3.8"
+# Telegram Agent Platform -- Docker Compose runtime.
+#
+# Canonical first run, two commands:
+#
+#   1. docker compose run --rm setup    # guided wizard: writes .env (token, provider, model)
+#   2. docker compose up -d             # start the long-polling agent in the background
+#
+# Extra wizard flags need the full command: `docker compose run` replaces the
+# service command when arguments follow the service name.
+#
+#   docker compose run --rm setup python -m src setup --advanced
+#   docker compose run --rm setup python -m src setup -y \
+#       --bot-token "$TELEGRAM_BOT_TOKEN" --provider "$AI_PROVIDER" \
+#       --model "$AI_MODEL" --api-key "$AI_API_KEY"
+#
+# Day-to-day:
+#
+#   docker compose logs -f               # follow the agent log
+#   docker compose down                  # stop the agent
+#   docker compose exec telegram-agent python -m src doctor
+#
+# The agent talks to Telegram with long polling only: it listens on no port, so
+# nothing is published. State lives in ./data and persists across restarts.
+# `setup` must run before `up`: it is what creates the .env file this repo needs.
+#
+# Linux note: both services run as uid 1000 ("app"). If your host user has a
+# different uid, either hand ./data to that uid -- sudo chown -R 1000:1000 ./data
+# -- or run the one-shot wizard as yourself:
+#   docker compose run --rm --user "$(id -u):$(id -g)" setup
 
 services:
   telegram-agent:
     build:
       context: .
       dockerfile: Dockerfile
+    image: telegram-agent:latest
     container_name: telegram-agent
     restart: unless-stopped
     env_file:
-      - .env
+      - path: .env
+        required: false
     volumes:
       - ./data:/app/data
-      - ./.env:/app/.env:ro
-    ports:
-      - "8080:8080"
+      # Read-only view of the configuration the setup wizard wrote.
+      # create_host_path: false makes a missing .env fail loudly instead of being
+      # silently created as a directory.
+      - type: bind
+        source: ./.env
+        target: /app/.env
+        read_only: true
+        bind:
+          create_host_path: false
     healthcheck:
-      test: ["CMD", "python", "-m", "src", "status"]
+      test: ["CMD", "python", "-m", "src", "status", "--check"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 20s
+
+  # One-shot guided installer:  docker compose run --rm setup
+  # The whole project directory is mounted so the wizard's answers are written
+  # back to the host .env instead of dying with the container.
+  setup:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: telegram-agent:latest
+    profiles: ["setup"]
+    working_dir: /app
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./:/app
+    command: python -m src setup

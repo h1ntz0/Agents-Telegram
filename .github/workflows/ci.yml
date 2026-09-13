@@ -1,0 +1,143 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install package with dev extras
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run test suite
+        run: python -m pytest -q
+
+  version-check:
+    name: version consistency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Assert pyproject.toml, src/__init__.py and CHANGELOG.md agree
+        run: |
+          python - <<'PY'
+          import re
+          import sys
+          import tomllib
+          from pathlib import Path
+
+          ROOT = Path(".")
+
+
+          def fail(message: str) -> None:
+              print(f"::error::{message}")
+              sys.exit(1)
+
+
+          def warn(message: str) -> None:
+              print(f"::warning::{message}")
+
+
+          # 1. Package version -- the single source of truth lives in src/__init__.py.
+          init_file = ROOT / "src" / "__init__.py"
+          if not init_file.is_file():
+              fail("src/__init__.py is missing")
+          match = re.search(
+              r"""^__version__\s*=\s*["']([^"']+)["']""",
+              init_file.read_text(encoding="utf-8"),
+              re.MULTILINE,
+          )
+          if not match:
+              fail("could not find __version__ in src/__init__.py")
+          package_version = match.group(1)
+
+          # 2. Declared version -- pyproject.toml may be static or dynamic.
+          pyproject_file = ROOT / "pyproject.toml"
+          if not pyproject_file.is_file():
+              fail("pyproject.toml is missing")
+          pyproject = tomllib.loads(pyproject_file.read_text(encoding="utf-8"))
+          project = pyproject.get("project", {})
+          declared = project.get("version")
+
+          if declared is None:
+              if "version" not in project.get("dynamic", []):
+                  fail("pyproject.toml declares no project version (neither static nor dynamic)")
+              dynamic_version = (
+                  pyproject.get("tool", {})
+                  .get("setuptools", {})
+                  .get("dynamic", {})
+                  .get("version", {})
+                  or {}
+              )
+              attr = dynamic_version.get("attr")
+              if attr:
+                  print(f"pyproject.toml derives its version dynamically from '{attr}'.")
+                  declared = package_version
+              else:
+                  warn(
+                      "pyproject.toml declares a dynamic version without an 'attr', "
+                      "so the declared version cannot be checked."
+                  )
+
+          if declared is not None and declared != package_version:
+              fail(
+                  f"pyproject.toml version {declared!r} does not match "
+                  f"src/__init__.py __version__ {package_version!r}"
+              )
+
+          # 3. CHANGELOG.md -- owned by the release process, checked defensively.
+          changelog_file = ROOT / "CHANGELOG.md"
+          if not changelog_file.is_file():
+              warn("CHANGELOG.md not found -- skipping changelog version check.")
+          else:
+              heading = re.search(
+                  r"^##\s*\[?v?(\d+\.\d+\.\d+[^\]\s]*)",
+                  changelog_file.read_text(encoding="utf-8"),
+                  re.MULTILINE,
+              )
+              if not heading:
+                  warn("CHANGELOG.md has no '## <version>' heading -- skipping changelog version check.")
+              elif heading.group(1) != package_version:
+                  fail(
+                      f"CHANGELOG.md top version {heading.group(1)!r} does not match "
+                      f"src/__init__.py __version__ {package_version!r}"
+                  )
+              else:
+                  print(f"CHANGELOG.md top version matches: {package_version}")
+
+          print(f"Versions agree: {package_version}")
+          PY

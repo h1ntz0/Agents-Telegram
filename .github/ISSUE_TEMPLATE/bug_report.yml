@@ -1,0 +1,111 @@
+name: Bug report
+description: Something is broken in the Telegram Agent Platform
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a problem.
+
+        > **Redact your secrets before submitting.** Never paste your Telegram bot token,
+        > AI provider API keys, or the contents of `.env`. Replace them with `<redacted>`.
+        > If you are reporting a security vulnerability, stop here and follow
+        > [SECURITY.md](https://github.com/h1ntz0/Agents-Telegram/blob/main/SECURITY.md) instead.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear and concise description of the actual behaviour.
+      placeholder: The agent answered with a Python traceback instead of a reply…
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behaviour
+    attributes:
+      label: Expected behaviour
+      description: What you expected to happen instead.
+      placeholder: The agent should have replied with a summary of the file.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps that reproduce the problem reliably.
+      placeholder: |
+        1. Run `scripts/setup`
+        2. Send `/start` to the bot
+        3. Send the message "…"
+        4. See the error
+    validations:
+      required: true
+
+  - type: textarea
+    id: version-output
+    attributes:
+      label: Version output
+      description: Paste the output of `python -m src version`.
+      render: text
+      placeholder: |
+        telegram-agent 2.1.0
+        python 3.12.10 (…)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: operating-system
+    attributes:
+      label: Operating system
+      description: Where are you running the agent?
+      options:
+        - Windows 11
+        - Windows 10
+        - macOS
+        - Ubuntu / Debian
+        - Other Linux
+        - Docker
+        - Other (describe in "What happened?")
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Install method
+      description: How did you install and start the platform?
+      options:
+        - scripts/setup (bash, macOS/Linux/Git Bash)
+        - scripts/setup.ps1 (Windows PowerShell)
+        - scripts/setup.bat (Windows double-click)
+        - Manual install (pip install -e ".[dev]")
+        - Docker / docker-compose
+        - Other (describe in "What happened?")
+    validations:
+      required: true
+
+  - type: input
+    id: provider
+    attributes:
+      label: AI provider in use
+      description: The provider configured in `.env` (for example `openrouter`, `deepseek`, `ollama`).
+      placeholder: openrouter
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor-output
+    attributes:
+      label: Doctor output
+      description: |
+        Paste the output of `python -m src doctor` (anonymised — redact tokens and API keys).
+      render: text
+      placeholder: |
+        [PASS] Python version 3.12.10
+        [PASS] Virtual environment …
+    validations:
+      required: true

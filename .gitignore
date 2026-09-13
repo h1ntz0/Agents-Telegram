@@ -28,6 +28,8 @@ env/
 
 # Environment and Secrets (CRITICAL)
 .env
+.env.*
+!.env.example
 .env.local
 .env.*.local
 *.pem
@@ -38,11 +40,16 @@ secrets.yaml
 # Data and SQLite
 data/*.db
 data/*.db-journal
+data/*.db-wal
+data/*.db-shm
 data/*.sqlite
 data/*.sqlite3
 data/memory/*
 data/sessions/*
 !data/.gitkeep
+
+# Backups written by `agent backup` into the repository root
+backup_agent_*.tar.gz
 
 # Logs and Runtime
 logs/
