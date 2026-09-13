@@ -1,315 +1,288 @@
 <div align="center">
 
 # 🤖 Telegram Agent Platform
-### *Self-Hosted, Multimodal Multi-Agent AI Platform for Telegram*
+### *Self-hosted, multimodal multi-agent AI platform for Telegram*
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests: Passing](https://img.shields.io/badge/tests-passing%20(100%25)-brightgreen.svg)]()
-[![Code Style: Clean Architecture](https://img.shields.io/badge/architecture-Clean%20%2F%20Hexagonal-orange.svg)]()
-[![Security: OWASP Hardened](https://img.shields.io/badge/security-OWASP%20Hardened-red.svg)]()
-[![Release: v2.0](https://img.shields.io/badge/release-v2.0-blueviolet.svg)]()
+[![Release: v2.1.0](https://img.shields.io/badge/release-v2.1.0-blueviolet.svg)](CHANGELOG.md)
+[![Architecture: Clean](https://img.shields.io/badge/architecture-Clean%20%2F%20Hexagonal-orange.svg)](docs/architecture/overview.md)
+[![Security: OWASP Hardened](https://img.shields.io/badge/security-OWASP%20Hardened-red.svg)](docs/security/model.md)
 
-<br/>
-
-> **Deploy autonomous AI agents directly into Telegram with a single command.**  
-> Native tool calling, proactive cron schedules, multimodal media ingestion, live model switching, and automated multi-agent SDLC workflows.
-
-### 🖥️ Desktop Interface
-<p align="center">
-  <img src="assets/preview.png" alt="Telegram Agent Desktop Preview" width="85%" style="border-radius: 12px;" />
-</p>
-
-*Interactive model switcher, Telegram autocomplete commands, and SDLC multi-agent orchestration.*
-
-<br/>
-
-### 📱 Mobile Vision & Multimodal
-<p align="center">
-  <img src="assets/mobile-preview.png" alt="Telegram Agent Mobile Multimodal Vision" width="45%" style="border-radius: 12px;" />
-</p>
-
-*Native Telegram mobile multimodal media processing, visual inspection, and OCR analysis.*
+Run a personal AI agent inside Telegram. Tool calling, scheduled tasks, image and document
+understanding, live model switching, and a remote control for a local OpenCode session —
+all on your own machine, with all data in a local SQLite file.
 
 </div>
 
 ---
 
-## ⚡ What's New in v2.0
+## Quick start
 
-| Capability | Description |
-| :--- | :--- |
-| ⏰ **Proactive Cron & Reminders** | Set recurring cron tasks or one-shot reminders (`/schedule`, `/remind`). The agent proactively initiates conversations and delivers scheduled reports. |
-| 👁️ **Multimodal Media Processing** | Send images, documents, audio clips, and code snippets directly in chat. The agent handles visual inspection, OCR, and document analysis. |
-| 🧰 **Extended Tooling Suite** | Out-of-the-box support for **Python Sandbox**, **HTTP Fetcher** (SSRF-hardened), **Weather Forecasts**, **Chart Generation**, **Web Search**, **GitHub API**, and **Filesystem**. |
-| ⌨️ **Telegram Native Autocomplete** | Dynamic command registration via `setMyCommands` provides instant slash-command suggestions and menu discovery as you type `/`. |
-| 🔄 **Dynamic Model Switching** | Switch between models on the fly directly inside chat via `/model` or interactive inline keyboards across 7+ providers. |
-| 👥 **Autonomous Multi-Agent SDLC** | Run complete 4-stage software development workflows (`/sdlc <feature>`) orchestrating Planner, Developer, QA, and Reviewer subagents. |
-| 🧹 **Humanizer Engine** | Filters out boilerplate AI filler (*"Certainly!"*, *"I'd be happy to"*, *"In summary"*) for direct, crisp engineering responses. |
-| 🛡️ **OWASP-Hardened Perimeter** | SSRF blocker for RFC 1918 / cloud metadata IPs, sliding-window rate limiter, path traversal guard, and interactive confirmation for high-risk operations. |
+**Prerequisites:** Python 3.12 or newer, and a bot token from
+[@BotFather](https://t.me/BotFather) (send `/newbot`, copy the token).
+Docker is optional but makes this a two-command install.
 
----
+Open a terminal in your home folder — never inside `C:\Windows\system32` — and clone:
 
-## 🚀 Quick Start
-
-Get your agent running in under **2 minutes**:
-
-### 1. Clone & Enter Directory
 ```bash
-# Open a terminal in YOUR home folder first (NEVER C:\Windows\system32)
 git clone https://github.com/h1ntz0/Agents-Telegram.git
 cd Agents-Telegram
 ```
-
-> **Windows:** open PowerShell or Command Prompt, then `cd $HOME` (PowerShell) or `cd %USERPROFILE%` (CMD) *before* cloning. Cloning inside `C:\Windows\system32` fails with `Permission denied`.
-
-### 2. Run Interactive Setup Wizard
 
 <details open>
 <summary><b>🐧 Linux / macOS</b></summary>
 
 ```bash
-./scripts/setup
+./scripts/setup     # creates .venv, installs dependencies, runs the wizard
+./scripts/start     # start the agent; Ctrl+C stops it
 ```
 </details>
 
 <details open>
-<summary><b>🪟 Windows (PowerShell / Command Prompt)</b></summary>
+<summary><b>🪟 Windows (PowerShell)</b></summary>
 
 ```powershell
-# PowerShell - allow local scripts once, then run setup
 Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
 .\scripts\setup.ps1
+.\scripts\start.ps1
 ```
 
-```bat
-REM Command Prompt (cmd.exe)
-scripts\setup.bat
-```
-
-If Python 3.12+ is missing, the installer now offers to install it automatically via **winget**. If it does, close the window, open a **new** one, and run setup again.
+Using Command Prompt instead? Run `scripts\setup.bat` and `scripts\start.bat`.
+If Python 3.12+ is missing, the installer offers to install it through `winget`; close
+the window, open a new one, and run setup again.
 </details>
 
-The wizard verifies Python 3.12+, bootstraps `pip` if needed, creates `.venv`, installs dependencies (with an offline-safe fallback), queries available models live from your provider API, and creates your `.env` configuration file. Every failure prints a clear message and waits for a keypress instead of closing the window.
+<details open>
+<summary><b>🐳 Docker</b></summary>
 
-### 3. Start the Agent
+```bash
+docker compose run --rm setup    # guided wizard; writes .env
+docker compose up -d             # start the agent in the background
+docker compose logs -f           # follow the output
+```
+</details>
 
-* **Linux / macOS**: `./scripts/start` *(stop with `./scripts/stop`)*
-* **Windows PowerShell**: `.\scripts\start.ps1` *(stop with `.\scripts\stop.ps1`)*
-* **Windows CMD**: `scripts\start.bat` *(stop with `scripts\stop.bat`)*
+Then open Telegram, find your bot, and send `/start`.
 
-Open Telegram, search for your bot, and send `/start`!
+> **Secure it first.** Leave `TELEGRAM_ALLOWED_USERS` empty and anyone who guesses your
+> bot's username can drive it. The wizard asks for your numeric user ID — get it from
+> [@userinfobot](https://t.me/userinfobot).
 
----
+### Unattended install
 
-## 💬 Telegram Slash Commands
+For CI, provisioning scripts, or a server you configure from a playbook:
 
-Slash commands auto-register with Telegram on startup for instant autocomplete menu support:
+```bash
+agent setup -y \
+  --bot-token "$TELEGRAM_BOT_TOKEN" \
+  --provider openai --model gpt-4o-mini --api-key "$OPENAI_API_KEY" \
+  --allowed-users "$MY_TELEGRAM_ID" \
+  --timezone Asia/Jakarta
+```
 
-| Command | Arguments | Description | Example |
-| :--- | :--- | :--- | :--- |
-| `/start` | — | Initialize session and view bot runtime status | `/start` |
-| `/model` | `[model_name]` | Open interactive model picker or switch model directly | `/model ds/deepseek-v4-flash` |
-| `/provider` | `[name]` | List providers or switch the active AI provider live (persisted per user) | `/provider anthropic` |
-| `/agent` | `[persona]` | Switch sub-agent persona (`orchestrator`, `coder`, `researcher`, `qa`) | `/agent coder` |
-| `/sdlc` | `<task>` | Run 4-stage autonomous development lifecycle | `/sdlc Build JWT auth middleware in Python` |
-| `/schedule` | `<cron> <prompt>` | Schedule recurring proactive task or alert | `/schedule 0 9 * * * Morning summary of tech news` |
-| `/remind` | `<time> <text>` | Set one-shot reminder notification | `/remind 30m Check server deployment logs` |
-| `/status` | — | View live uptime, active provider, model, memory, and tools | `/status` |
-| `/settings` | — | Inspect current agent parameters and temperature | `/settings` |
-| `/tools` | — | List all registered tools and their permission levels | `/tools` |
-| `/memory` | — | View stored persistent user context and preferences | `/memory` |
-| `/reset` | — | Clear conversation context and active session history | `/reset` |
-| `/cancel` | — | Abort pending high-risk action or scheduled prompt | `/cancel` |
-| `/oc` | `[list\|attach\|detach\|new\|send\|stop\|model\|agent\|agents\|models\|commands\|skills\|diff]` | Mirror and control local OpenCode session (stream, switch model/agent, approve permissions) | `/oc attach ses_123` |
-| `/help` | — | Display complete command reference | `/help` |
+No prompts. A token that Telegram rejects fails the install with a non-zero exit code
+instead of leaving a half-configured deployment behind.
 
 ---
 
-## 🔀 Runtime Provider Switching
+## What you get
 
-Switch the active AI provider **live from Telegram** — no `.env` edit, no restart:
-
-| Command | Description |
+| | |
 | :--- | :--- |
-| `/provider` | List every provider and mark the active one with `✅` (plus `configured` / `no credentials`) |
-| `/provider <name>` | Switch the active provider for your user; the choice is persisted across restarts |
-
-Add credentials for any additional provider in `.env` (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`, `OLLAMA_BASE_URL`, `NINE_ROUTER_API_KEY`, …). Providers without credentials are listed as `no credentials` and cannot be selected. Each provider keeps its **own active model**, so switching never leaks a model from another provider.
-
----
-
-## 🧠 Supported AI Providers & Models
-
-Telegram Agent connects to cloud LLM APIs, local models, and unified gateway proxies:
-
-```mermaid
-graph TD
-    User([👤 Telegram User]) <--> Adapter[🤖 Telegram Adapter]
-    Adapter <--> Orchestrator[🧠 Agent Orchestrator]
-    Orchestrator <--> Sched[⏰ Cron & Reminder Engine]
-    Orchestrator <--> Tools[🧰 Extended Tool Registry]
-    Orchestrator <--> Security[🛡️ Security & Humanizer]
-    Security <--> Factory[🏭 AI Provider Factory]
-    Factory <--> P1[🌐 9router Gateway]
-    Factory <--> P2[⚡ DeepSeek API]
-    Factory <--> P3[🔮 Anthropic Claude]
-    Factory <--> P4[🌟 Google Gemini]
-    Factory <--> P5[🟢 OpenAI / OpenRouter]
-    Factory <--> P6[🦙 Ollama Local]
-```
-
-### Provider Model Reference
-
-* **9router (Local Gateway)**: `ag/gemini-3.7-flash-high`, `ds/deepseek-v4-flash`, `ds/deepseek-chat`, `ds/deepseek-reasoner`, `ag/claude-sonnet-4-6`, `cx/gpt-5.6-sol`, `cx/gpt-5.4`
-* **DeepSeek (Official)**: `deepseek-chat` (DeepSeek-V3), `deepseek-reasoner` (DeepSeek-R1)
-* **Anthropic Claude**: `claude-3-7-sonnet-20250219`, `claude-3-5-sonnet-20241022`, `claude-3-5-haiku-20241022`
-* **Google Gemini**: `gemini-2.0-flash`, `gemini-1.5-pro`, `gemini-1.5-flash`
-* **OpenCode Zen**: `muse-spark-1.2-contributor-free`, `oc/mimo-v2.5-free`, `oc/big-pickle`, `oc/hy3-free`, `zen-code-1`, `zen-instruct-preview`
-* **OpenCode Go**: `go-code-fast`, `go-flash`, `go-sonnet`, `go-chat`, `go-coder-preview`
-* **OpenAI**: `gpt-4o`, `gpt-4o-mini`, `o1`, `o3-mini`
-* **OpenRouter**: `anthropic/claude-3.5-sonnet`, `deepseek/deepseek-r1`, `openai/gpt-4o`
-* **Ollama**: `llama3.2`, `deepseek-r1`, `qwen2.5-coder`, `mistral`
+| 💬 **Chat with tool calling** | The model calls real tools — search, fetch, run code, query GitHub, read and write files — in a loop of up to 5 turns. |
+| ⏰ **Proactive tasks** | `/schedule` recurring jobs and `/remind` one-off reminders, both interpreted in your own timezone. The agent messages you first. |
+| 👁️ **Images, documents, voice** | Send a photo, a CSV, or a voice note and it just works. Photos go to the model as images; documents are read as text; voice is transcribed when an OpenAI-compatible key is configured. |
+| 🔄 **Live model switching** | `/model` and `/provider` switch mid-conversation across 10 providers, with each provider keeping its own active model. |
+| 👥 **Multi-agent SDLC** | `/sdlc <task>` runs planner → developer → QA → reviewer and streams progress into the chat. |
+| ⌨️ **Remote OpenCode control** | `/oc` mirrors a local `opencode serve` session: live tool-call streaming, model and agent switching, and inline approval buttons for risky operations. |
+| 🌐 **English and Indonesian** | `/lang en` or `/lang id`, persisted per user. |
+| 🛡️ **Safe by default** | Shell execution off, filesystem writes sandboxed, destructive tools gated behind a button confirmation, SSRF guard on fetching, per-user rate limiting. |
 
 ---
 
-## 🧰 Extended Tooling Suite (v2.0)
+## Telegram commands
 
-All tools operate under strict permission boundaries and parameter sanitization:
+`/help` lists everything in the chat. Full reference:
+[docs/reference/commands.md](docs/reference/commands.md).
 
-| Tool | Permission | Risk | Description |
+| Command | What it does |
+| :--- | :--- |
+| `/start` | Status: provider, model, persona, language |
+| `/model [name]` | Model picker, or switch directly |
+| `/provider [name]` | Provider list, or switch provider |
+| `/agent <persona>` | `orchestrator`, `researcher`, `coder`, or `qa` |
+| `/sdlc <task>` | Run the 4-stage development lifecycle |
+| `/oc <sub>` | Control a local OpenCode session |
+| `/schedule <time\|cron> <prompt>` | Recurring AI task (`list`, `cancel <id>`) |
+| `/remind <time> <text>` | One-off reminder |
+| `/chart <type> <labels> <values>` | Bar, line, pie, doughnut, radar charts |
+| `/status` | Runtime status |
+| `/settings` | Current configuration |
+| `/tools` | Registered tools and their permissions |
+| `/memory` | Stored memory |
+| `/lang [en\|id]` | Change the language |
+| `/reset` | Clear the conversation |
+| `/cancel` | Discard a pending confirmation |
+| `/admin` | Operator diagnostics (needs `ADMIN_TELEGRAM_USERS`) |
+| `/help` | Everything above |
+
+---
+
+## Supported providers
+
+Switch at runtime with `/provider`; each provider's credentials live in `.env`.
+
+| Provider | Sample models | Credentials |
+| :--- | :--- | :--- |
+| **9router** (local gateway) | `ag/gemini-3.8-flash-high`, `ds/deepseek-v4-flash`, `ocg/kimi-k3` | `NINE_ROUTER_API_KEY`, `NINE_ROUTER_BASE_URL` |
+| **DeepSeek** | `deepseek-chat`, `deepseek-reasoner` | `DEEPSEEK_API_KEY` |
+| **Anthropic** | `claude-3-7-sonnet-20250219`, `claude-3-5-haiku-20241022` | `ANTHROPIC_API_KEY` |
+| **Google** | `gemini-2.0-flash`, `gemini-1.5-pro` | `GOOGLE_API_KEY` |
+| **OpenAI** | `gpt-4o`, `gpt-4o-mini`, `o1`, `o3-mini` | `OPENAI_API_KEY` |
+| **OpenRouter** | `anthropic/claude-3.5-sonnet`, `deepseek/deepseek-r1` | `OPENROUTER_API_KEY` |
+| **Ollama** (local, free) | `llama3.2`, `qwen2.5-coder`, `mistral` | `OLLAMA_BASE_URL` — no key |
+| **OpenCode Zen** | `muse-spark-1.2-contributor-free`, `oc/big-pickle` | `OPENCODE_ZEN_API_KEY` |
+| **OpenCode Go** | `go-code-fast`, `go-sonnet` | `OPENCODE_GO_API_KEY` |
+| **Custom** | anything OpenAI-compatible | `CUSTOM_API_KEY`, `CUSTOM_BASE_URL` |
+
+The model list is fetched live from the provider when you run the wizard or `/model`, so
+you pick from what your account can actually use. Every provider and environment variable
+is documented in [docs/reference/env.md](docs/reference/env.md).
+
+---
+
+## Tools
+
+All 13 tools, with the environment variable that gates each one. Risk tiers are enforced:
+`HIGH` tools require an inline button confirmation unless you turn
+`REQUIRE_CONFIRMATION_FOR_DESTRUCTIVE` off.
+
+| Tool | Permission | Risk | Default |
 | :--- | :--- | :--- | :--- |
-| `web_search` | `READ` | `LOW` | Queries DuckDuckGo and sanitizes snippet outputs. |
-| `python_sandbox` | `EXECUTE` | `MEDIUM` | Runs Python scripts in an isolated process with memory/CPU constraints. |
-| `http_fetch` | `READ` | `LOW` | Fetches web pages with SSRF prevention (blocks private subnets & metadata IPs). |
-| `weather` | `READ` | `LOW` | Fetches real-time atmospheric data and multi-day meteorological forecasts. |
-| `generate_chart` | `WRITE` | `LOW` | Renders visual plots (bar, line, pie, scatter) and sends PNGs directly to chat. |
-| `file_read` / `file_write` | `READ` / `WRITE` | `LOW` / `MEDIUM` | Accesses workspace files within `FILESYSTEM_ROOT_DIR` with path jail guards. |
-| `file_edit` / `file_delete` | `WRITE` / `DESTRUCTIVE` | `MEDIUM` / `HIGH` | Search-and-replace code editing & file removal in workspace. |
-| `opencode_session` | `EXECUTE` | `MEDIUM` | Bridges prompts directly to a locally running OpenCode coding session (`opencode serve`). |
-| `github` | `READ` / `WRITE` | `LOW` / `MEDIUM` | Reads repository files (`get_file`), lists directories (`list_files`), inspects repo metadata, and tracks issues. Works on public repos without token. |
-| `shell_execute` | `EXECUTE` | `HIGH` | Runs system commands; requires explicit user button confirmation. |
+| `web_search` | READ | LOW | on |
+| `http_fetch` | READ | LOW | on — SSRF-guarded |
+| `generate_chart` | READ | LOW | on |
+| `get_weather` | READ | LOW | on |
+| `github` | READ | LOW | on — write gated by `GITHUB_ALLOW_WRITE` |
+| `file_read`, `dir_list` | READ | LOW | on |
+| `python_sandbox` | EXECUTE | MEDIUM | on |
+| `file_write`, `file_edit` | WRITE | MEDIUM | on — blocked by `FILESYSTEM_READ_ONLY` |
+| `opencode_session` | EXECUTE | MEDIUM | on |
+| `file_delete` | DESTRUCTIVE | HIGH | on — **asks for confirmation** |
+| `shell_execute` | EXECUTE | HIGH | **off** |
+
+Details, parameters and extension instructions:
+[docs/integrations/tools.md](docs/integrations/tools.md).
 
 ---
 
-## 🛠️ Multi-Agent SDLC Workflow
-
-Send `/sdlc <task description>` in Telegram to trigger the 4-phase automated lifecycle:
-
-```text
-1. 📋 PLANNER AGENT    -> Architecture decomposition & technical roadmap
-2. 💻 DEVELOPER AGENT  -> Clean, modular production implementation
-3. 🧪 QA & SECURITY    -> Edge-case testing, vulnerability audit, and assertions
-4. 🔍 REVIEWER AGENT   -> Synthesis, Humanizer formatting, and final deliverable
-```
-
-Live progress edits update the message directly in Telegram (`25%` → `50%` → `75%` → `100%`).
-
----
-
-## 🔗 OpenCode Mirror Mode
-
-Telegram Agent can mirror a locally running OpenCode coding agent (`opencode serve`) live in chat. The local OpenCode session is itself backed by the user's 9router gateway:
-
-* **Session Attachment**: Connect to a running session via `/oc attach <session_id>`. Once attached, every message sent in Telegram drives that OpenCode session directly.
-* **Live Status Card**: Real-time progress updates stream in Telegram displaying current tool calls, step execution, and token progress.
-* **Final Delivery**: When execution completes, the full synthesized answer is posted as a standalone message.
-* **Interrupt & Control**: Send `/oc stop` to immediately interrupt the active turn. Inspect or switch active model and agent directly via `/oc model` and `/oc agent`.
-* **Interactive Permission Gate**: Destructive or high-risk operations surface inline Telegram buttons with **Approve Once**, **Always Allow**, and **Reject** choices.
-* **Loopback & Credential Safety**: The local OpenCode server must run strictly on loopback (`127.0.0.1`), and the bot rejects external hosts. The bot never forwards the 9router API key to the OpenCode instance.
-
----
-
-## 🐳 Docker Deployment
-
-For 24/7 background operation on a server or VPS:
+## Operating the agent
 
 ```bash
-# 1. Run setup wizard to configure .env
-./scripts/setup
-
-# 2. Start container with Docker Compose
-docker compose up -d
-
-# 3. Stream live logs
-docker compose logs -f
+agent start --detach     # run in the background, logging to data/agent.log
+agent status             # is it up, and with which configuration?
+agent stop               # graceful shutdown
+agent doctor             # full health check; exits non-zero on any failure
+agent backup             # archive .env and data/ into a tarball
 ```
 
----
-
-## 🩺 System Diagnostics (`./scripts/doctor`)
-
-Validate connectivity, API credentials, and runtime dependencies at any time:
-
-* **Linux / macOS**: `./scripts/doctor`
-* **Windows PowerShell**: `.\scripts\doctor.ps1`
-* **Windows CMD**: `scripts\doctor.bat`
+`agent doctor` is the first thing to run when something is wrong. It checks the Python
+version, operating system, configuration schema, any `.env` keys the agent ignores,
+your timezone, `.gitignore` coverage, SQLite access, the Telegram connection, the AI
+provider, and the OpenCode bridge:
 
 ```text
-✓ Operating System: Linux | Git: installed | Docker: installed
-✓ Configuration Schema: Valid syntax and schema.
-✓ Secret Protection (.gitignore): .env is gitignored
-✓ Database & Storage: SQLite accessible at data/agent.db
-✓ Telegram Connection: Connected as @YourBot (ID: 123456789)
-✓ Slash Commands: Registered 11 commands via setMyCommands
-✓ AI Provider: 9ROUTER (ag/gemini-3.7-flash-high) verified.
+OK  Python Runtime: Python 3.12.10
+OK  Operating System: Windows 11 | Git: installed | Docker: installed
+OK  Configuration Schema: Valid syntax and schema.
+OK  Configuration Keys: Every key in .env is recognised.
+OK  Timezone: Schedules use Asia/Jakarta.
+OK  Secret Protection (.gitignore): .env is gitignored
+OK  Database & Storage: SQLite accessible at data/agent.db
+OK  Telegram Connection: Connected as @your_bot (ID: 123456789)
+OK  AI Provider: OPENAI (gpt-4o-mini) verified.
+--  OpenCode Terminal Bridge: Offline (start with `opencode serve --port 4096` ...)
+```
 
-✓ All system health checks passed.
+Two agents cannot poll the same bot token at once — the second start is refused with a
+clear message rather than producing silent Telegram 409 conflicts. Use `--force` to take
+over from an instance that will not stop.
 
 ---
 
-## 🧪 Automated Testing
+## Configuration
 
-The codebase includes automated test suites covering unit, integration, end-to-end, and chaos fuzzing:
+Everything lives in `.env`, with `config/defaults/default.yaml` underneath it as the
+shipped defaults layer. Full reference: [docs/reference/env.md](docs/reference/env.md).
+
+Re-running `agent setup` is safe: it updates the keys it manages and preserves your
+comments and any keys it does not know about.
+
+---
+
+## Troubleshooting
+
+| Symptom | Fix |
+| :--- | :--- |
+| `python` not found, or version too old | Install Python 3.12+ (`winget install -e --id Python.Python.3.12`, `brew install python@3.12`, or `apt install python3 python3-venv python3-pip`) and re-run setup. |
+| PowerShell refuses to run the script | `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force` |
+| Setup says the token is invalid | Check for a stray space or a truncated paste. Get a fresh token from @BotFather with `/token`. |
+| Nothing happens when you message the bot | Run `agent doctor`. Check `TELEGRAM_ALLOWED_USERS` contains your numeric ID, and that only one agent is running (`agent status`). |
+| `409 Conflict` in the logs | Two instances are polling the same bot token. `agent stop` then `agent start`. |
+| Reminders fire at the wrong hour | Set `TIMEZONE` to your IANA zone (`Asia/Jakarta`, `Europe/Berlin`, …). `agent doctor` flags an invalid value. |
+| `.env` setting has no effect | `agent doctor` lists keys the agent never reads, which is usually a typo — `MEMORY_PROVIDER` instead of `STORAGE_PROVIDER`, for example. |
+| A tool never gets called | `ALLOW_SHELL` defaults to `false`, and `FILESYSTEM_READ_ONLY` blocks writes. Check `/tools` in Telegram to see what is registered. |
+| Docker: agent exits immediately | Run `docker compose run --rm setup` first — the container needs the `.env` it writes. |
+
+---
+
+## Documentation
+
+| Document | Answers |
+| :--- | :--- |
+| [docs/README.md](docs/README.md) | Index of everything below |
+| [docs/reference/commands.md](docs/reference/commands.md) | Every Telegram command and CLI subcommand |
+| [docs/reference/env.md](docs/reference/env.md) | Every environment variable |
+| [docs/setup/guide.md](docs/setup/guide.md) | Install, systemd, Docker, operations |
+| [docs/architecture/overview.md](docs/architecture/overview.md) | Layers, runtime flow, data model |
+| [docs/integrations/tools.md](docs/integrations/tools.md) | Tool reference and how to add one |
+| [docs/security/model.md](docs/security/model.md) | Threat model and the guards that implement it |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup and conventions |
+| [CHANGELOG.md](CHANGELOG.md) | What changed in each release |
+
+---
+
+## Development
 
 ```bash
-./.venv/bin/pytest -v --cov=src
+python -m venv .venv
+# Windows: .venv\Scripts\activate     Linux/macOS: source .venv/bin/activate
+pip install -e ".[dev]"
+pytest -q
 ```
 
----
-
-## 📁 Project Architecture
-
-```text
-Agents-Telegram/
-├── assets/                 # Preview media and architecture diagrams
-├── config/                 # YAML configuration schemas and defaults
-├── data/                   # SQLite database and runtime PID files (gitignored)
-├── docs/                   # Complete architectural & integration specs
-│   ├── architecture/       # Clean architecture & layer contracts
-│   ├── integrations/       # Tool specifications & extension guides
-│   ├── security/           # OWASP threat model & sandboxing policies
-│   └── setup/              # Setup, deployment, and operational guides
-├── scripts/                # Utility and simulation scripts
-├── src/
-│   ├── application/        # Orchestrator, SDLC engine, Scheduler, Setup wizard, Doctor
-│   ├── domain/             # Core entities (Session, Message, User, Provider, Tool, Schedule)
-│   ├── infrastructure/     # AI providers, Database, Telegram adapter, Tools, Security
-│   │   ├── ai/             # Provider implementations (9router, DeepSeek, Claude, Gemini, etc.)
-│   │   ├── database/       # Async SQLite persistence (sessions, memories, schedules)
-│   │   ├── security/       # SSRF guard, rate limiter, secret scrubber, Humanizer
-│   │   ├── telegram/       # Bot API client, formatting, auth, autocomplete registration
-│   │   └── tools/          # Web search, Python sandbox, HTTP fetcher, Weather, Charts, FS, Shell
-│   └── interfaces/         # CLI parser & daemon entrypoints
-├── tests/                  # Unit, Integration, E2E, and Chaos test suites
-├── doctor                  # System diagnostic executable
-├── setup                   # Interactive setup wizard executable
-├── start                   # Agent daemon starter executable
-└── stop                    # Agent daemon stopper executable
-```
+The codebase is clean-architecture: `src/interfaces` → `src/application` → `src/domain`,
+with `src/infrastructure` implementing the ports. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
-## 🔒 Security & Privacy
+## Security
 
-* **Local Data Sovereignty**: All chat history, memories, and schedules reside in local SQLite (`data/agent.db`).
-* **Strict Secret Isolation**: `.env` is created with `chmod 600` and permanently excluded via `.gitignore`.
-* **SSRF Guard**: Blocks outbound requests to RFC 1918 private subnets and cloud metadata endpoints (`169.254.169.254`).
-* **Safe Sandboxing**: File operations are jailed to designated directories; shell commands require explicit confirmation.
-* **Rate Limiting**: Sliding-window limiter prevents API abuse and denial-of-service attempts.
+* **Local data sovereignty** — chat history, memories and schedules live in `data/agent.db`
+  on your machine. Nothing is sent anywhere except your chosen AI provider and Telegram.
+* **Secret isolation** — `.env` is gitignored and written with `0600` on POSIX (on Windows
+  the file inherits your profile ACLs).
+* **SSRF guard** — `http_fetch` rejects private, loopback, link-local and cloud-metadata
+  addresses.
+* **Path jail** — filesystem tools cannot escape `FILESYSTEM_ROOT_DIR`.
+* **Confirmation gate** — destructive tools surface inline Approve / Cancel buttons.
+* **Rate limiting** — a per-user sliding window prevents runaway API spend.
+
+Report a vulnerability per [SECURITY.md](SECURITY.md).
 
 ---
 
-## 📄 License
+## License
 
 Distributed under the [MIT License](LICENSE).
