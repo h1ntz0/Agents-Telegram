@@ -38,8 +38,18 @@ class OllamaProvider(AIProvider):
             ollama_messages.append({"role": "system", "content": request.system_prompt})
 
         for msg in request.messages:
-            role = "user" if msg.role == Role.USER else ("assistant" if msg.role == Role.ASSISTANT else "tool")
-            ollama_messages.append({"role": role, "content": msg.content or ""})
+            if msg.role == Role.TOOL:
+                for tr in msg.tool_responses:
+                    ollama_messages.append({"role": "tool", "content": tr.content})
+                continue
+            role = "user" if msg.role == Role.USER else "assistant"
+            entry: Dict[str, Any] = {"role": role, "content": msg.content or ""}
+            if msg.role == Role.ASSISTANT and msg.tool_calls:
+                entry["tool_calls"] = [
+                    {"function": {"name": tc.name, "arguments": tc.arguments}}
+                    for tc in msg.tool_calls
+                ]
+            ollama_messages.append(entry)
 
         payload: Dict[str, Any] = {
             "model": request.model or self.model,
