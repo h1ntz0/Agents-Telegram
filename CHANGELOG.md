@@ -105,7 +105,7 @@ terminal, Docker, or a CI job.
 - Windows users get `tzdata` automatically via the package dependency.
 - Run `agent doctor` after upgrading; it now exits non-zero when a check fails.
 
-## [2.0.0] - 2025-09-01
+## 2.0.0 - 2025-09-01
 
 ### Added
 
@@ -121,7 +121,7 @@ terminal, Docker, or a CI job.
 - Multi-agent SDLC workflow via `/sdlc`, orchestrating planner, developer, QA and
   reviewer stages.
 
-## [1.0.0] - 2025-08-18
+## 1.0.0 - 2025-08-18
 
 ### Added
 
@@ -129,6 +129,4 @@ terminal, Docker, or a CI job.
   session and memory store, a tool registry with permission and risk levels, and an
   interactive setup wizard.
 
-[2.1.0]: https://github.com/h1ntz0/Agents-Telegram/compare/v2.0.0...v2.1.0
-[2.0.0]: https://github.com/h1ntz0/Agents-Telegram/compare/v1.0.0...v2.0.0
-[1.0.0]: https://github.com/h1ntz0/Agents-Telegram/releases/tag/v1.0.0
+[2.1.0]: https://github.com/h1ntz0/Agents-Telegram/releases/tag/v2.1.0
