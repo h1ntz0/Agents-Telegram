@@ -10,10 +10,16 @@ from src.domain.provider import AIProvider, CompletionRequest, CompletionRespons
 class AnthropicProvider(AIProvider):
     """Handles communication with Anthropic Messages API."""
 
-    def __init__(self, api_key: str, model: str = "claude-3-5-sonnet-20241022", timeout: float = 60.0):
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "claude-3-5-sonnet-20241022",
+        base_url: Optional[str] = None,
+        timeout: float = 60.0,
+    ):
         self.api_key = api_key
         self.model = model
-        self.base_url = "https://api.anthropic.com/v1"
+        self.base_url = (base_url or "https://api.anthropic.com/v1").rstrip("/")
         self.timeout = timeout
 
     @property

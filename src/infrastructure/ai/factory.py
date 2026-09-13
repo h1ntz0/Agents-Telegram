@@ -40,19 +40,22 @@ def create_ai_provider(
         return AnthropicProvider(
             api_key=api_key,
             model=model or "claude-3-5-sonnet-20241022",
-            timeout=timeout
+            base_url=base_url,
+            timeout=timeout,
         )
     elif name == ProviderType.GOOGLE.value:
         return GoogleProvider(
             api_key=api_key,
             model=model or "gemini-2.0-flash",
-            timeout=timeout
+            base_url=base_url,
+            timeout=timeout,
         )
     elif name == ProviderType.OPENROUTER.value:
         return OpenRouterProvider(
             api_key=api_key,
             model=model or "anthropic/claude-3.5-sonnet",
-            timeout=timeout
+            base_url=base_url,
+            timeout=timeout,
         )
     elif name == ProviderType.OLLAMA.value:
         return OllamaProvider(

@@ -10,10 +10,16 @@ from src.domain.provider import AIProvider, CompletionRequest, CompletionRespons
 class GoogleProvider(AIProvider):
     """Handles communication with Google Gemini API."""
 
-    def __init__(self, api_key: str, model: str = "gemini-2.0-flash", timeout: float = 60.0):
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "gemini-2.0-flash",
+        base_url: Optional[str] = None,
+        timeout: float = 60.0,
+    ):
         self.api_key = api_key
         self.model = model
-        self.base_url = "https://generativelanguage.googleapis.com/v1beta"
+        self.base_url = (base_url or "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
         self.timeout = timeout
 
     @property
