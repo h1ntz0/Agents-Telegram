@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "telegram-agent"
-version = "1.0.0"
+dynamic = ["version"]
 description = "Self-hosted AI Agent framework with zero-friction Telegram setup and runtime"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -12,13 +12,35 @@ license = { text = "MIT" }
 authors = [
     { name = "Benn", email = "dev@example.com" }
 ]
+keywords = ["telegram", "bot", "ai-agent", "llm", "openai", "anthropic", "ollama", "self-hosted"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Communications :: Chat",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "pydantic>=2.7.0",
     "pyyaml>=6.0.1",
     "python-dotenv>=1.0.1",
     "httpx>=0.27.0",
-    "aiosqlite>=0.20.0"
+    "aiosqlite>=0.20.0",
+    # Windows ships no IANA timezone database, so zoneinfo needs this to resolve
+    # names like Asia/Jakarta for /remind and /schedule.
+    "tzdata>=2024.1; sys_platform == 'win32'",
 ]
+
+[project.urls]
+Homepage = "https://github.com/h1ntz0/Agents-Telegram"
+Repository = "https://github.com/h1ntz0/Agents-Telegram"
+Issues = "https://github.com/h1ntz0/Agents-Telegram/issues"
+Changelog = "https://github.com/h1ntz0/Agents-Telegram/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
@@ -29,6 +51,17 @@ dev = [
 
 [project.scripts]
 agent = "src.interfaces.cli.main:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "src.__version__" }
+
+# The repo keeps its packages under ./src but is not a src-layout project: `src` itself is
+# the importable package (from src.application... import ...). Without this, setuptools
+# auto-discovery guesses src-layout, fails to resolve `src.__version__`, and would install
+# the sub-packages as top-level modules.
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

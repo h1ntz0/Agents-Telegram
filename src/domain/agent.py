@@ -53,6 +53,7 @@ class PendingConfirmation:
     arguments: Dict[str, Any]
     risk_level: str
     description: str
+    user_id: int = 0
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 

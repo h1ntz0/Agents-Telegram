@@ -17,11 +17,13 @@ def test_config_defaults(tmp_path):
     cfg = cfg_mgr.load_config()
 
     assert cfg.app.env == "production"
-    assert cfg.telegram.mode == "polling"
+    assert cfg.app.timezone == "UTC"
+    assert cfg.app.ui_lang == "en"
     assert cfg.ai.provider == "openai"
     assert cfg.storage.memory_enabled is True
     assert cfg.tools.web_search.enabled is True
     assert cfg.tools.shell.enabled is False
+    assert cfg.security.rate_limit_per_minute == 15
 
 
 def test_save_and_load_env(tmp_path):

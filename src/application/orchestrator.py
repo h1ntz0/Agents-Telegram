@@ -9,6 +9,7 @@ import logging
 import os
 import re
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import httpx
 from src.application.config_manager import RootConfig
@@ -26,6 +27,13 @@ from src.application.provider_registry import (
 )
 from src.infrastructure.ai.model_discovery import fetch_available_models
 from src.infrastructure.database.sqlite_db import SqliteDatabase
+from src.infrastructure.i18n import (
+    available_languages,
+    is_supported_language,
+    language_name,
+    normalize_language,
+    t,
+)
 from src.infrastructure.scheduler.job_scheduler import JobScheduler, ScheduledJob
 from src.infrastructure.security.humanizer import humanize_response
 from src.infrastructure.security.rate_limiter import UserRateLimiter
@@ -70,6 +78,8 @@ class AgentOrchestrator:
         self._user_active_persona: Dict[int, str] = {}
         self._user_active_model: Dict[int, str] = {}
         self._user_active_provider: Dict[int, str] = {}
+        self._user_language: Dict[int, str] = {}
+        self._started_at = datetime.now(timezone.utc)
         self._provider_cache: Dict[str, AIProvider] = {
             normalize_provider_name(config.ai.provider): ai_provider
         }
@@ -152,6 +162,22 @@ class AgentOrchestrator:
         self._user_active_model[f"{user_id}:{provider_name}"] = clean_name
         await self.db.set_memory(user_id, f"_active_model:{provider_name}", clean_name)
 
+    async def _get_user_language(self, user_id: int) -> str:
+        """Return the user's UI language (cache -> SQLite -> deployed default)."""
+        if user_id in self._user_language:
+            return self._user_language[user_id]
+        memories = await self.db.get_memories(user_id)
+        code = normalize_language(memories.get("_language") or self.config.app.ui_lang)
+        self._user_language[user_id] = code
+        return code
+
+    async def _set_user_language(self, user_id: int, language: str) -> str:
+        """Persist the user's UI language so it survives restarts."""
+        code = normalize_language(language)
+        self._user_language[user_id] = code
+        await self.db.set_memory(user_id, "_language", code)
+        return code
+
     async def _transcribe_audio(self, audio_bytes: bytes, filename: str = "voice.ogg") -> Optional[str]:
         """Attempt speech-to-text transcription via OpenAI-compatible whisper endpoint."""
         api_key = self.config.ai.api_key
@@ -187,12 +213,14 @@ class AgentOrchestrator:
 
         # 1. Authorization check
         if not self.auth.check_authorization(user_id, is_group=is_group):
-            await self.telegram.send_message(chat_id, "Sorry, you are not authorized to use this bot.")
+            await self.telegram.send_message(chat_id, t("bot.unauthorized"))
             return
+
+        lang = await self._get_user_language(user_id)
 
         # 2. Rate limiting check
         if not self.rate_limiter.is_allowed(user_id):
-            await self.telegram.send_message(chat_id, "Rate limit exceeded. Please wait a moment before sending more messages.")
+            await self.telegram.send_message(chat_id, t("bot.rate_limited", lang))
             return
 
         # 3. Extract text / captions and process attachments
@@ -214,10 +242,10 @@ class AgentOrchestrator:
                 b64_photo = base64.b64encode(photo_bytes).decode("utf-8")
                 message_metadata["image_base64"] = b64_photo
                 message_metadata["mime_type"] = "image/jpeg"
-                processed_prompt = caption if caption else "Tolong analisis dan jelaskan gambar terlampir ini secara detail."
+                processed_prompt = caption if caption else t("bot.photo.default_prompt", lang)
             except Exception as e:
                 logger.error(f"Failed to process photo: {str(e)}")
-                processed_prompt = f"Gagal mengunduh foto ({str(e)}). {caption or ''}"
+                processed_prompt = t("bot.photo.failed", lang, error=str(e), caption=caption or "")
 
         # Case B: Document attachment (txt, csv, json, code, markdown, etc.)
         elif "document" in message_data:
@@ -242,21 +270,25 @@ class AgentOrchestrator:
                 if text_content:
                     snippet = text_content[:4000]
                     if len(text_content) > 4000:
-                        snippet += "\n... [truncated]"
-                    user_req = caption or "Please analyze and summarize this attached document."
-                    processed_prompt = (
-                        f"[Document Attached: {file_name} ({mime_type}, {file_size} bytes)]\n"
-                        f"--- Content Preview ---\n{snippet}\n--- End Preview ---\n\n"
-                        f"{user_req}"
+                        snippet += t("bot.document.truncated", lang)
+                    user_req = caption or t("bot.document.default_prompt", lang)
+                    processed_prompt = t(
+                        "bot.document.preview", lang,
+                        name=file_name, mime=mime_type, size=file_size,
+                        content=snippet, request=user_req,
                     )
                 else:
-                    processed_prompt = (
-                        f"[Binary Document Attached: {file_name} ({mime_type}, {file_size} bytes)]\n"
-                        f"{caption or 'Binary file received.'}"
+                    processed_prompt = t(
+                        "bot.document.binary", lang,
+                        name=file_name, mime=mime_type, size=file_size,
+                        caption=caption or "",
                     )
             except Exception as e:
                 logger.error(f"Failed to process document: {str(e)}")
-                processed_prompt = f"[Document Attached: {file_name} (Download Error: {str(e)})]\n{caption or ''}"
+                processed_prompt = t(
+                    "bot.document.error", lang,
+                    name=file_name, error=str(e), caption=caption or "",
+                )
 
         # Case C: Voice / Audio note
         elif "voice" in message_data or "audio" in message_data:
@@ -270,16 +302,22 @@ class AgentOrchestrator:
                 transcription = await self._transcribe_audio(audio_bytes, filename=f"voice_{file_id}.ogg")
                 if transcription:
                     processed_prompt = f"[Voice Message Transcribed]: {transcription}"
-                    await self.telegram.send_message(chat_id, f"🎙️ _Transcribed voice note ({duration}s):_\n\"{transcription}\"")
+                    await self.telegram.send_message(
+                        chat_id,
+                        t("bot.voice.transcribed", lang, duration=duration, text=transcription),
+                    )
                 else:
                     await self.telegram.send_message(
                         chat_id,
-                        f"🎙️ Received voice note ({duration}s, {file_size} bytes).\nVoice transcription requires an OpenAI API key or whisper endpoint configured."
+                        t("bot.voice.no_transcription", lang, duration=duration, size=file_size),
                     )
                     return
             except Exception as e:
                 logger.error(f"Failed to process voice note: {str(e)}")
-                await self.telegram.send_message(chat_id, f"🎙️ Received voice note ({duration}s), but failed to process audio: {str(e)}")
+                await self.telegram.send_message(
+                    chat_id,
+                    t("bot.voice.failed", lang, duration=duration, error=str(e)),
+                )
                 return
 
         # Case D: Standard text message
@@ -306,63 +344,36 @@ class AgentOrchestrator:
         active_model = await self._get_user_model(user_id)
         active_persona = self._user_active_persona.get(user_id, "orchestrator")
         provider_name = await self._get_user_provider(user_id)
+        lang = await self._get_user_language(user_id)
+
+        def L(key: str, **kwargs: Any) -> str:
+            return t(key, lang, **kwargs)
 
         if cmd == "/start":
-            msg = (
-                f"Hello! I am {self.config.agent.name}.\n\n"
-                f"Status: Online\n"
-                f"Active Provider: {provider_name.upper()}\n"
-                f"Active Model: {active_model}\n"
-                f"Active Persona: {active_persona.upper()}\n\n"
-                "Commands:\n"
-                "/model - View or change active AI model\n"
-                "/provider - View or change active AI provider\n"
-                "/agent - Switch sub-agent persona\n"
-                "/schedule <time/cron> <prompt> - Schedule proactive AI job\n"
-                "/remind <time> <text> - Set a reminder\n"
-                "/chart <type> <labels> <values> - Generate chart\n"
-                "/sdlc <task> - Run full 4-stage SDLC\n"
-                "/oc - Remote & mirror OpenCode (stop/model/agent/list/attach)\n"
-                "/reset - Clear chat history context\n"
-                "/help - View all commands"
+            msg = L(
+                "bot.start.body",
+                name=self.config.agent.name,
+                provider=provider_name.upper(),
+                model=active_model,
+                persona=active_persona.upper(),
+                language=language_name(lang),
             )
             await self.telegram.send_message(chat_id, msg)
 
         elif cmd == "/help":
-            help_text = (
-                "Available Commands:\n"
-                "/model [name] - View or switch active AI model\n"
-                "/provider [name] - View or switch the active AI provider\n"
-                "/agent [orchestrator|researcher|coder|qa] - Switch sub-agent persona\n"
-                "/schedule <time/cron> <prompt> - Schedule proactive AI job\n"
-                "  • Examples: `/schedule every 1h Periksa berita terkini`\n"
-                "  • Subcommands: `/schedule list`, `/schedule cancel <id>`\n"
-                "/remind <time> <text> - Set a one-off reminder\n"
-                "  • Examples: `/remind 15m Minum air`, `/remind 14:30 Rapat`\n"
-                "/chart <type> <labels> <values> - Generate QuickChart & ASCII chart\n"
-                "  • Example: `/chart bar Jan,Feb,Mar 10,25,18`\n"
-                "/sdlc <task> - Execute multi-agent development lifecycle\n"
-                "/oc [subcommand] - Control OpenCode session (stop/model/agent/agents/models/commands/skills/diff/list/attach)\n"
-                "/status - Runtime health and configuration overview\n"
-                "/settings - View current model and preferences\n"
-                "/tools - List active tools\n"
-                "/memory - View recorded memory\n"
-                "/reset - Clear conversation context\n"
-                "/cancel - Abort pending action"
-            )
-            await self.telegram.send_message(chat_id, help_text)
+            await self.telegram.send_message(chat_id, L("bot.help.body"))
 
         elif cmd == "/model":
             if args:
                 await self._set_user_model(user_id, args)
                 markup = {
                     "inline_keyboard": [
-                        [{"text": "🧹 Clear History (/reset)", "callback_data": "reset_session"}]
+                        [{"text": L("bot.model.clear_button"), "callback_data": "reset_session"}]
                     ]
                 }
                 await self.telegram.send_message(
                     chat_id,
-                    f"✓ Active model for {provider_name.upper()} switched to: {args}\n\nTip: Gunakan /reset jika ingin mengosongkan riwayat percakapan dari model sebelumnya.",
+                    L("bot.model.switched", provider=provider_name.upper(), model=args),
                     reply_markup=markup
                 )
                 return
@@ -387,24 +398,19 @@ class AgentOrchestrator:
                 buttons.append([{"text": f"Select {m}", "callback_data": f"set_model:{m}"}])
 
             markup = {"inline_keyboard": buttons} if buttons else None
-            msg = (
-                f"Active Provider: {provider_name.upper()}\n"
-                f"Current Model: {active_model}\n\n"
-                "Click a model button below or type:\n"
-                "  /model <model_name>\n"
-                "Contoh: /model ds/deepseek-v4-flash"
-            )
+            msg = L("bot.model.header", provider=provider_name.upper(), model=active_model)
             await self.telegram.send_message(chat_id, msg, reply_markup=markup)
 
         elif cmd == "/provider":
             if not args:
-                lines = ["Available AI Providers:\n"]
+                lines = [L("bot.provider.header"), ""]
                 for name in list_provider_names():
                     marker = "\u2705" if name == provider_name else "\u2022"
-                    status = "configured" if provider_is_configured(name, self.config) else "no credentials"
+                    status = L("bot.provider.configured") if provider_is_configured(name, self.config) else L("bot.provider.missing")
                     lines.append(f"{marker} {name} ({status})")
-                lines.append("\nSwitch with: /provider <name>")
-                lines.append("Add credentials in .env (e.g. OPENAI_API_KEY) to enable more providers.")
+                lines.append("")
+                lines.append(L("bot.provider.switch_hint"))
+                lines.append(L("bot.provider.credentials_hint"))
                 await self.telegram.send_message(chat_id, "\n".join(lines))
                 return
 
@@ -412,7 +418,7 @@ class AgentOrchestrator:
             if requested not in list_provider_names():
                 await self.telegram.send_message(
                     chat_id,
-                    f"Unknown provider '{args}'. Options: {', '.join(list_provider_names())}",
+                    L("bot.provider.unknown", provider=args, options=", ".join(list_provider_names())),
                 )
                 return
             try:
@@ -426,46 +432,47 @@ class AgentOrchestrator:
             active_model = await self._get_user_model(user_id)
             await self.telegram.send_message(
                 chat_id,
-                f"\u2713 Active provider switched to: {requested.upper()}\n"
-                f"Active Model: {active_model}\n\n"
-                "Tip: /reset to clear conversation history carried over from the previous provider.",
+                L("bot.provider.switched", provider=requested.upper(), model=active_model),
             )
 
         elif cmd == "/agent":
             if not args:
                 cur = self._user_active_persona.get(user_id, "orchestrator")
                 avail = ", ".join(SUBAGENT_PERSONAS.keys())
-                await self.telegram.send_message(chat_id, f"Current Agent Persona: {cur}\nAvailable: {avail}\nUsage: /agent <name>")
+                await self.telegram.send_message(
+                    chat_id,
+                    L("bot.agent.current", persona=cur, options=avail),
+                )
                 return
             target = args.lower()
             if target in SUBAGENT_PERSONAS:
                 self._user_active_persona[user_id] = target
-                await self.telegram.send_message(chat_id, f"✓ Switched to {target.upper()} agent persona.")
+                await self.telegram.send_message(chat_id, L("bot.agent.switched", persona=target.upper()))
             else:
-                await self.telegram.send_message(chat_id, f"Unknown agent persona '{target}'. Options: {', '.join(SUBAGENT_PERSONAS.keys())}")
+                await self.telegram.send_message(
+                    chat_id,
+                    L("bot.agent.unknown", persona=target, options=", ".join(SUBAGENT_PERSONAS.keys())),
+                )
 
         elif cmd == "/schedule":
             if not args:
-                usage = (
-                    "Usage: `/schedule <time/cron> <prompt>`\n\n"
-                    "Examples:\n"
-                    "• `/schedule every 1h Periksa berita saham`\n"
-                    "• `/schedule 10m Analisis log server`\n"
-                    "• `/schedule */30 * * * * Update harga koin`\n"
-                    "• `/schedule list` — Lihat semua jadwal aktif\n"
-                    "• `/schedule cancel <job_id>` — Batalkan jadwal"
-                )
-                await self.telegram.send_message(chat_id, usage)
+                await self.telegram.send_message(chat_id, L("bot.schedule.usage"))
                 return
 
             if args.lower() == "list":
                 jobs = await self.scheduler.list_jobs(user_id=user_id, active_only=True)
                 if not jobs:
-                    await self.telegram.send_message(chat_id, "No active scheduled jobs.")
+                    await self.telegram.send_message(chat_id, L("bot.schedule.none"))
                     return
-                lines = ["📅 **Active Scheduled Jobs:**"]
+                lines = [L("bot.schedule.header"), ""]
                 for j in jobs:
-                    lines.append(f"• `{j.job_id}` [{j.job_type}]: {j.prompt} (Next: {j.next_run_at.strftime('%Y-%m-%d %H:%M:%S UTC')})")
+                    lines.append(L(
+                        "bot.schedule.entry",
+                        job_id=j.job_id,
+                        job_type=j.job_type,
+                        prompt=j.prompt,
+                        next_run=self.scheduler.format_time(j.next_run_at),
+                    ))
                 await self.telegram.send_message(chat_id, "\n".join(lines))
                 return
 
@@ -473,9 +480,9 @@ class AgentOrchestrator:
                 job_id = args.split(maxsplit=1)[1].strip()
                 cancelled = await self.scheduler.cancel_job(job_id, user_id=user_id)
                 if cancelled:
-                    await self.telegram.send_message(chat_id, f"✓ Scheduled job `{job_id}` has been cancelled.")
+                    await self.telegram.send_message(chat_id, L("bot.schedule.cancelled", job_id=job_id))
                 else:
-                    await self.telegram.send_message(chat_id, f"Job `{job_id}` not found or already completed/cancelled.")
+                    await self.telegram.send_message(chat_id, L("bot.schedule.cancel_missing", job_id=job_id))
                 return
 
             # Parse schedule time expression and prompt
@@ -495,7 +502,7 @@ class AgentOrchestrator:
                 prompt_text = tokens[1] if len(tokens) > 1 else ""
 
             if not prompt_text:
-                await self.telegram.send_message(chat_id, "Please provide the prompt/task to execute.")
+                await self.telegram.send_message(chat_id, L("bot.schedule.need_prompt"))
                 return
 
             try:
@@ -508,24 +515,21 @@ class AgentOrchestrator:
                 )
                 await self.telegram.send_message(
                     chat_id,
-                    f"✓ Proactive scheduled AI job created (`{job.job_id}`).\n"
-                    f"• Type: {job.schedule_type.upper()} ({job.schedule_value})\n"
-                    f"• Next Trigger: {job.next_run_at.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
-                    f"• Prompt: \"{job.prompt}\""
+                    L(
+                        "bot.schedule.created",
+                        job_id=job.job_id,
+                        schedule_type=job.schedule_type.upper(),
+                        schedule_value=job.schedule_value,
+                        next_run=self.scheduler.format_time(job.next_run_at),
+                        prompt=job.prompt,
+                    ),
                 )
             except Exception as e:
-                await self.telegram.send_message(chat_id, f"Scheduling error: {str(e)}")
+                await self.telegram.send_message(chat_id, L("bot.schedule.error", error=str(e)))
 
         elif cmd == "/remind":
             if not args:
-                usage = (
-                    "Usage: `/remind <time> <reminder_text>`\n\n"
-                    "Examples:\n"
-                    "• `/remind 10m Minum air putih`\n"
-                    "• `/remind in 2h Rapat koordinasi tim`\n"
-                    "• `/remind 18:00 Kirim laporan harian`"
-                )
-                await self.telegram.send_message(chat_id, usage)
+                await self.telegram.send_message(chat_id, L("bot.remind.usage"))
                 return
 
             # Parse time and reminder text
@@ -539,7 +543,7 @@ class AgentOrchestrator:
                 remind_text = tokens[1] if len(tokens) > 1 else ""
 
             if not remind_text:
-                await self.telegram.send_message(chat_id, "Please provide the reminder message.")
+                await self.telegram.send_message(chat_id, L("bot.remind.need_text"))
                 return
 
             try:
@@ -551,24 +555,19 @@ class AgentOrchestrator:
                 )
                 await self.telegram.send_message(
                     chat_id,
-                    f"⏰ Reminder set (`{job.job_id}`).\n"
-                    f"• Time: {job.next_run_at.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
-                    f"• Message: \"{job.prompt}\""
+                    L(
+                        "bot.remind.set",
+                        job_id=job.job_id,
+                        next_run=self.scheduler.format_time(job.next_run_at),
+                        prompt=job.prompt,
+                    ),
                 )
             except Exception as e:
-                await self.telegram.send_message(chat_id, f"Reminder error: {str(e)}")
+                await self.telegram.send_message(chat_id, L("bot.remind.error", error=str(e)))
 
         elif cmd == "/chart":
             if not args:
-                usage = (
-                    "Usage: `/chart <type> <labels> <values>`\n\n"
-                    "Examples:\n"
-                    "• `/chart bar Jan,Feb,Mar 10,25,18`\n"
-                    "• `/chart bar Title | Jan: 10, Feb: 20`\n"
-                    "• `/chart pie Python,TypeScript,Go 45,35,20`\n"
-                    "• `/chart line Q1,Q2,Q3,Q4 100,150,130,210`"
-                )
-                await self.telegram.send_message(chat_id, usage)
+                await self.telegram.send_message(chat_id, L("bot.chart.usage"))
                 return
 
             chart_tool = ChartTool()
@@ -579,7 +578,7 @@ class AgentOrchestrator:
                 h_tokens = header_part.strip().split(maxsplit=1)
                 if h_tokens and h_tokens[0].lower() in ("bar", "line", "pie", "doughnut", "radar", "polararea"):
                     chart_type = h_tokens[0].lower()
-                    title = h_tokens[1].strip() if len(h_tokens) > 1 else f"{chart_type.capitalize()} Chart"
+                    title = h_tokens[1].strip() if len(h_tokens) > 1 else L("bot.chart.title", chart_type=chart_type.capitalize())
                 else:
                     chart_type = "bar"
                     title = header_part.strip()
@@ -606,7 +605,7 @@ class AgentOrchestrator:
 
             tokens = args.split(maxsplit=2)
             if len(tokens) < 3:
-                await self.telegram.send_message(chat_id, "Format: `/chart <type> <labels> <values>` (e.g. `/chart bar A,B,C 10,20,30`)")
+                await self.telegram.send_message(chat_id, L("bot.chart.format"))
                 return
 
             chart_type = tokens[0].lower()
@@ -617,7 +616,7 @@ class AgentOrchestrator:
                 "chart_type": chart_type,
                 "labels": labels_str,
                 "values": values_str,
-                "title": f"{chart_type.capitalize()} Chart",
+                "title": L("bot.chart.title", chart_type=chart_type.capitalize()),
             }, user_id=user_id)
 
             await self.telegram.send_message(chat_id, res.content)
@@ -625,75 +624,130 @@ class AgentOrchestrator:
 
         elif cmd == "/sdlc":
             if not args:
-                await self.telegram.send_message(chat_id, "Usage: /sdlc <describe the feature or task to build>")
+                await self.telegram.send_message(chat_id, L("bot.sdlc.usage"))
                 return
             await self._run_sdlc_flow(chat_id, user_id, args)
 
         elif cmd == "/status":
-            status_text = (
-                f"Agent Status: RUNNING\n"
-                f"Telegram: CONNECTED\n"
-                f"Provider: {provider_name.upper()}\n"
-                f"Active Model: {active_model}\n"
-                f"Active Persona: {active_persona.upper()}\n"
-                f"Memory: {'Enabled' if self.config.storage.memory_enabled else 'Disabled'}\n"
-                f"Active Tools: {len(self.tools.list_definitions())}"
-            )
-            await self.telegram.send_message(chat_id, status_text)
+            await self.telegram.send_message(chat_id, L(
+                "bot.status.body",
+                provider=provider_name.upper(),
+                model=active_model,
+                persona=active_persona.upper(),
+                language=language_name(lang),
+                memory=L("wizard.review.enabled") if self.config.storage.memory_enabled else L("wizard.review.disabled"),
+                tools=len(self.tools.list_definitions()),
+            ))
 
         elif cmd == "/settings":
-            settings_text = (
-                f"Settings Overview:\n"
-                f"- Name: {self.config.agent.name}\n"
-                f"- Personality: {self.config.agent.personality}\n"
-                f"- AI Provider: {provider_name.upper()}\n"
-                f"- Active Model: {active_model}\n"
-                f"- Temperature: {self.config.ai.temperature}"
-            )
-            await self.telegram.send_message(chat_id, settings_text)
+            await self.telegram.send_message(chat_id, L(
+                "bot.settings.body",
+                name=self.config.agent.name,
+                personality=self.config.agent.personality,
+                provider=provider_name.upper(),
+                model=active_model,
+                temperature=self.config.ai.temperature,
+            ))
 
         elif cmd == "/tools":
             tool_defs = self.tools.list_definitions()
             if not tool_defs:
-                await self.telegram.send_message(chat_id, "No tools are currently enabled.")
+                await self.telegram.send_message(chat_id, L("bot.tools.none"))
                 return
-            lines = ["Registered Tools:"]
+            lines = [L("bot.tools.header")]
             for td in tool_defs:
                 lines.append(f"- {td.name} [{td.permission.value}]: {td.description}")
             await self.telegram.send_message(chat_id, "\n".join(lines))
 
         elif cmd == "/memory":
-            memories = await self.db.get_memories(user_id)
-            if not memories:
-                await self.telegram.send_message(chat_id, "No memories recorded yet.")
+            if not self.config.storage.memory_enabled:
+                await self.telegram.send_message(chat_id, L("bot.memory.disabled"))
                 return
-            lines = ["Stored Memories:"]
-            for k, v in memories.items():
-                if not k.startswith("_"):
-                    lines.append(f"• {k}: {v}")
-            if len(lines) == 1:
-                lines.append("(empty)")
+            memories = await self.db.get_memories(user_id)
+            visible = {k: v for k, v in memories.items() if not k.startswith("_")}
+            if not visible:
+                await self.telegram.send_message(chat_id, L("bot.memory.none"))
+                return
+            lines = [L("bot.memory.header")]
+            for k, v in visible.items():
+                lines.append(f"• {k}: {v}")
             await self.telegram.send_message(chat_id, "\n".join(lines))
+
+        elif cmd == "/lang":
+            if not args:
+                await self.telegram.send_message(chat_id, L(
+                    "bot.lang.current",
+                    language=language_name(lang),
+                    options=", ".join(available_languages()),
+                ))
+                return
+            if not is_supported_language(args):
+                await self.telegram.send_message(chat_id, L(
+                    "bot.lang.unknown",
+                    value=args,
+                    options=", ".join(available_languages()),
+                ))
+                return
+            new_lang = await self._set_user_language(user_id, args)
+            await self.telegram.send_message(
+                chat_id,
+                t("bot.lang.switched", new_lang, language=language_name(new_lang)),
+            )
 
         elif cmd == "/reset":
             session_id = f"user_{user_id}_chat_{chat_id}"
             await self.db.clear_session(session_id)
-            if user_id in self._pending_actions:
-                del self._pending_actions[user_id]
-            await self.telegram.send_message(chat_id, "Conversation context reset.")
+            self._drop_pending_actions(user_id)
+            await self.telegram.send_message(chat_id, L("bot.reset.done"))
 
         elif cmd == "/cancel":
-            if user_id in self._pending_actions:
-                del self._pending_actions[user_id]
-                await self.telegram.send_message(chat_id, "Pending action cancelled.")
+            removed = self._drop_pending_actions(user_id)
+            if removed:
+                await self.telegram.send_message(chat_id, L("bot.cancel.done"))
             else:
-                await self.telegram.send_message(chat_id, "No action currently pending confirmation.")
+                await self.telegram.send_message(chat_id, L("bot.cancel.none"))
+
+        elif cmd == "/admin":
+            await self._handle_admin_command(chat_id, user_id, args, lang)
 
         elif cmd == "/oc":
             await self._handle_oc_command(chat_id, user_id, args)
 
         else:
-            await self.telegram.send_message(chat_id, f"Unknown command '{cmd}'. Type /help for assistance.")
+            await self.telegram.send_message(chat_id, L("bot.unknown_command", command=cmd))
+
+    def _drop_pending_actions(self, user_id: int) -> int:
+        """Discard every confirmation owned by a user and return how many were removed."""
+        owned = [aid for aid, pending in self._pending_actions.items() if pending.user_id == user_id]
+        for action_id in owned:
+            del self._pending_actions[action_id]
+        return len(owned)
+
+    async def _handle_admin_command(self, chat_id: int, user_id: int, args: str, lang: str) -> None:
+        """Show operator diagnostics. Restricted to the ADMIN_TELEGRAM_USERS list."""
+        admins = self.config.telegram.admin_users
+        if not admins:
+            await self.telegram.send_message(chat_id, t("bot.admin.unconfigured", lang))
+            return
+        if not self.auth.is_admin(user_id):
+            await self.telegram.send_message(chat_id, t("bot.admin.denied", lang))
+            return
+        uptime = datetime.now(timezone.utc) - self._started_at
+        hours, remainder = divmod(int(uptime.total_seconds()), 3600)
+        minutes, seconds = divmod(remainder, 60)
+
+        scheduled = len(await self.scheduler.list_jobs(active_only=True))
+        await self.telegram.send_message(chat_id, t(
+            "bot.admin.stats", lang,
+            uptime=f"{hours}h {minutes}m {seconds}s",
+            users=len(self._user_language),
+            providers=len(self._provider_cache),
+            scheduled=scheduled,
+            pending=len(self._pending_actions),
+            tools=len(self.tools.list_definitions()),
+            timezone=getattr(self.scheduler.tz, "key", str(self.scheduler.tz)),
+            database=self.config.storage.database_path,
+        ))
 
     async def _handle_oc_command(self, chat_id: int, user_id: int, args: str) -> None:
         """Manage OpenCode terminal session attach, list, new, and direct messaging."""
@@ -701,32 +755,20 @@ class AgentOrchestrator:
         subcmd = tokens[0].lower() if tokens else ""
         subargs = tokens[1].strip() if len(tokens) > 1 else ""
 
+        lang = await self._get_user_language(user_id)
+
+        def L(key: str, **kwargs: Any) -> str:
+            return t(key, lang, **kwargs)
+
         current_attached = self._user_active_oc_session.get(user_id)
 
         if not subcmd or subcmd == "status":
             url = await self.opencode_bridge.auto_discover_server()
-            status_line = f"🟢 Connected ({url})" if url else "⚪ Offline (jalankan `opencode serve` di terminal)"
-            attached_line = f"`{current_attached}`" if current_attached else "None (kirim `/oc attach <session_id>`)"
-            msg = (
-                f"**OpenCode Terminal Bridge**\n\n"
-                f"• Server: {status_line}\n"
-                f"• Attached Session: {attached_line}\n\n"
-                "Perintah:\n"
-                "• `/oc list` — Tampilkan semua sesi OpenCode lokal\n"
-                "• `/oc attach <id>` — Hubungkan bot ke sesi terminal OpenCode\n"
-                "• `/oc detach` — Lepas sesi yang sedang terhubung\n"
-                "• `/oc new [title]` — Buat sesi OpenCode baru dari Telegram\n"
-                "• `/oc send <prompt>` — Kirim pesan langsung ke sesi terminal\n"
-                "• `/oc stop` — Hentikan eksekusi turn yang sedang berjalan\n"
-                "• `/oc model <id> [providerID]` — Ganti model sesi OpenCode\n"
-                "• `/oc agent <name>` — Ganti agent sesi OpenCode\n"
-                "• `/oc agents` — Lihat daftar agent yang tersedia\n"
-                "• `/oc models` — Lihat daftar model yang tersedia\n"
-                "• `/oc commands` — Lihat daftar perintah OpenCode\n"
-                "• `/oc skills` — Lihat daftar skill OpenCode\n"
-                "• `/oc diff` — Lihat diff sesi OpenCode"
-            )
-            await self.telegram.send_message(chat_id, msg)
+            status_line = L("oc.connected", url=url) if url else L("oc.offline")
+            attached_line = f"`{current_attached}`" if current_attached else L("oc.none_attached")
+            await self.telegram.send_message(chat_id, L(
+                "oc.help", status=status_line, session=attached_line,
+            ))
             return
 
         elif subcmd == "list":
@@ -735,9 +777,9 @@ class AgentOrchestrator:
                 await self.opencode_bridge.auto_discover_server()
                 sessions = await self.opencode_bridge.list_sessions()
                 if not sessions:
-                    await self.telegram.send_message(chat_id, "Tidak ada sesi OpenCode yang ditemukan.")
+                    await self.telegram.send_message(chat_id, L("oc.none_found"))
                     return
-                lines = ["**Sesi OpenCode Lokal:**\n"]
+                lines = [L("oc.list_header"), ""]
                 for s in sessions[:15]:
                     sid = s.get("id", "")
                     title = s.get("title") or s.get("slug") or "(untitled)"
@@ -745,33 +787,32 @@ class AgentOrchestrator:
                     m_name = model_info.get("id") or model_info.get("modelID") or "default"
                     marker = " 👈 (attached)" if sid == current_attached else ""
                     lines.append(f"• `{sid}`\n  {title} [{m_name}]{marker}")
-                lines.append("\nKetik `/oc attach <id>` untuk menghubungkan sesi ke chat ini.")
+                lines.append("")
+                lines.append(L("oc.list_attach_hint"))
                 await self.telegram.send_message(chat_id, "\n".join(lines))
             except Exception as e:
-                await self.telegram.send_message(chat_id, f"Gagal mengambil sesi OpenCode: {str(e)}")
+                await self.telegram.send_message(chat_id, L("oc.list_failed", error=str(e)))
             return
 
         elif subcmd == "attach":
             if not subargs:
-                await self.telegram.send_message(chat_id, "Penggunaan: `/oc attach <session_id>`")
+                await self.telegram.send_message(chat_id, L("oc.attach_usage"))
                 return
             target_sid = subargs.strip()
             try:
                 session_data = await self.opencode_bridge.get_session(target_sid)
                 if not session_data:
-                    await self.telegram.send_message(chat_id, f"Sesi `{target_sid}` tidak ditemukan di server OpenCode.")
+                    await self.telegram.send_message(chat_id, L("oc.attach_missing", session=target_sid))
                     return
                 self._user_active_oc_session[user_id] = target_sid
                 self._get_oc_mirror(user_id, chat_id)
                 title = session_data.get("title") or target_sid
                 await self.telegram.send_message(
                     chat_id,
-                    f"✓ Sesi OpenCode `{target_sid}` ({title}) berhasil di-attach!\n\n"
-                    "Sekarang, setiap pesan yang Anda kirim di chat ini akan langsung dieksekusi oleh sesi terminal OpenCode tersebut.\n"
-                    "Ketik `/oc detach` untuk kembali ke mode bot standar."
+                    L("oc.attach_done", session=target_sid, title=title),
                 )
             except Exception as e:
-                await self.telegram.send_message(chat_id, f"Gagal attach sesi: {str(e)}")
+                await self.telegram.send_message(chat_id, L("oc.attach_failed", error=str(e)))
             return
 
         elif subcmd == "detach":
@@ -783,9 +824,9 @@ class AgentOrchestrator:
                     logger.warning(f"Error stopping mirror on detach: {e}")
             if user_id in self._user_active_oc_session:
                 old_sid = self._user_active_oc_session.pop(user_id)
-                await self.telegram.send_message(chat_id, f"✓ Sesi `{old_sid}` telah dilepas. Bot kembali ke mode AI mandiri.")
+                await self.telegram.send_message(chat_id, L("oc.detached", session=old_sid))
             else:
-                await self.telegram.send_message(chat_id, "Tidak ada sesi OpenCode yang sedang terhubung.")
+                await self.telegram.send_message(chat_id, L("oc.detach_none"))
             return
 
         elif subcmd == "new":
@@ -796,16 +837,16 @@ class AgentOrchestrator:
                 if new_sid:
                     self._user_active_oc_session[user_id] = new_sid
                     self._get_oc_mirror(user_id, chat_id)
-                    await self.telegram.send_message(chat_id, f"✓ Sesi OpenCode baru dibuat & di-attach: `{new_sid}` ({title}).")
+                    await self.telegram.send_message(chat_id, L("oc.new_done", session=new_sid, title=title))
                 else:
-                    await self.telegram.send_message(chat_id, "Sesi dibuat tetapi server tidak mengembalikan ID.")
+                    await self.telegram.send_message(chat_id, L("oc.new_no_id"))
             except Exception as e:
-                await self.telegram.send_message(chat_id, f"Gagal membuat sesi: {str(e)}")
+                await self.telegram.send_message(chat_id, L("oc.new_failed", error=str(e)))
             return
 
         elif subcmd == "send":
             if not subargs:
-                await self.telegram.send_message(chat_id, "Penggunaan: `/oc send <prompt>`")
+                await self.telegram.send_message(chat_id, L("oc.send_usage"))
                 return
             target_sid = current_attached
             if not target_sid:
@@ -814,16 +855,16 @@ class AgentOrchestrator:
                 if sessions:
                     target_sid = sessions[0].get("id")
             if not target_sid:
-                await self.telegram.send_message(chat_id, "Tidak ada sesi OpenCode aktif. Jalankan `/oc new` atau `/oc attach <id>`.")
+                await self.telegram.send_message(chat_id, L("oc.send_none"))
                 return
 
             await self.telegram.send_chat_action(chat_id, "typing")
             try:
                 reply = await self.opencode_bridge.send_message(target_sid, subargs)
                 clean_reply = humanize_response(reply)
-                await self.telegram.send_message(chat_id, f"**OpenCode (`{target_sid}`):**\n\n{clean_reply}")
+                await self.telegram.send_message(chat_id, f"{L('oc.send_header', session=target_sid)}\n\n{clean_reply}")
             except Exception as e:
-                await self.telegram.send_message(chat_id, f"OpenCode Error: {str(e)}")
+                await self.telegram.send_message(chat_id, L("oc.error", error=str(e)))
             return
 
         elif subcmd == "stop":
@@ -835,15 +876,15 @@ class AgentOrchestrator:
                     await self.opencode_bridge.interrupt(current_attached)
                 except Exception:
                     pass
-            await self.telegram.send_message(chat_id, "⏹️ Turn dihentikan.")
+            await self.telegram.send_message(chat_id, L("oc.stopped"))
             return
 
         elif subcmd == "model":
             if not current_attached:
-                await self.telegram.send_message(chat_id, "Tidak ada sesi OpenCode aktif. Jalankan `/oc new` atau `/oc attach <id>`.")
+                await self.telegram.send_message(chat_id, L("oc.send_none"))
                 return
             if not subargs:
-                await self.telegram.send_message(chat_id, "Penggunaan: `/oc model <id> [providerID]`")
+                await self.telegram.send_message(chat_id, L("oc.model_usage"))
                 return
             m_parts = subargs.split(maxsplit=1)
             model_id = m_parts[0].strip()
@@ -853,20 +894,20 @@ class AgentOrchestrator:
                 if ok:
                     await self.telegram.send_message(
                         chat_id,
-                        f"✓ Model OpenCode untuk sesi `{current_attached}` disetel ke `{model_id}` ({provider_id}).",
+                        L("oc.model_done", session=current_attached, model=model_id, provider=provider_id),
                     )
                 else:
-                    await self.telegram.send_message(chat_id, "Gagal mengubah model sesi OpenCode.")
+                    await self.telegram.send_message(chat_id, L("oc.model_failed"))
             except Exception as e:
-                await self.telegram.send_message(chat_id, f"Gagal mengubah model: {str(e)}")
+                await self.telegram.send_message(chat_id, L("oc.model_error", error=str(e)))
             return
 
         elif subcmd == "agent":
             if not current_attached:
-                await self.telegram.send_message(chat_id, "Tidak ada sesi OpenCode aktif. Jalankan `/oc new` atau `/oc attach <id>`.")
+                await self.telegram.send_message(chat_id, L("oc.send_none"))
                 return
             if not subargs:
-                await self.telegram.send_message(chat_id, "Penggunaan: `/oc agent <name>`")
+                await self.telegram.send_message(chat_id, L("oc.agent_usage"))
                 return
             agent_name = subargs.strip()
             try:
@@ -874,12 +915,12 @@ class AgentOrchestrator:
                 if ok:
                     await self.telegram.send_message(
                         chat_id,
-                        f"✓ Agent OpenCode untuk sesi `{current_attached}` disetel ke `{agent_name}`.",
+                        L("oc.agent_done", session=current_attached, agent=agent_name),
                     )
                 else:
-                    await self.telegram.send_message(chat_id, "Gagal mengubah agent sesi OpenCode.")
+                    await self.telegram.send_message(chat_id, L("oc.agent_failed"))
             except Exception as e:
-                await self.telegram.send_message(chat_id, f"Gagal mengubah agent: {str(e)}")
+                await self.telegram.send_message(chat_id, L("oc.agent_error", error=str(e)))
             return
 
         elif subcmd in ("agents", "models", "commands", "skills"):
@@ -899,10 +940,10 @@ class AgentOrchestrator:
                     title = "OpenCode Skills"
 
                 if not items:
-                    await self.telegram.send_message(chat_id, f"Tidak ada {subcmd} yang ditemukan.")
+                    await self.telegram.send_message(chat_id, L("oc.none_items", kind=subcmd))
                     return
 
-                lines = [f"**{title}:**\n"]
+                lines = [f"**{title}:**", ""]
                 for item in items[:20]:
                     if isinstance(item, dict):
                         item_id = item.get("id") or item.get("name") or item.get("title") or str(item)
@@ -915,31 +956,35 @@ class AgentOrchestrator:
                         lines.append(f"• `{item}`")
                 await self.telegram.send_message(chat_id, "\n".join(lines))
             except Exception as e:
-                await self.telegram.send_message(chat_id, f"Gagal mengambil daftar {subcmd}: {str(e)}")
+                await self.telegram.send_message(chat_id, L("oc.list_failed_items", kind=subcmd, error=str(e)))
             return
 
         elif subcmd == "diff":
             if not current_attached:
-                await self.telegram.send_message(chat_id, "Tidak ada sesi OpenCode aktif. Jalankan `/oc attach <id>`.")
+                await self.telegram.send_message(chat_id, L("oc.diff_none"))
                 return
             diff_fn = getattr(self.opencode_bridge, "get_diff", None) or getattr(self.opencode_bridge, "diff", None)
             if callable(diff_fn):
                 try:
                     diff_res = await diff_fn(current_attached)
-                    text_diff = str(diff_res) if diff_res else "Tidak ada perubahan."
-                    await self.telegram.send_message(chat_id, f"**Diff Sesi (`{current_attached}`):**\n\n`{text_diff}`")
+                    text_diff = str(diff_res) if diff_res else L("oc.diff_empty")
+                    await self.telegram.send_message(
+                        chat_id,
+                        f"{L('oc.diff_header', session=current_attached)}\n\n`{text_diff}`",
+                    )
                 except Exception as e:
-                    await self.telegram.send_message(chat_id, f"Gagal mengambil diff: {str(e)}")
+                    await self.telegram.send_message(chat_id, L("oc.diff_failed", error=str(e)))
             else:
-                await self.telegram.send_message(chat_id, "Fitur diff belum tersedia di server OpenCode ini.")
+                await self.telegram.send_message(chat_id, L("oc.diff_unsupported"))
             return
 
         else:
-            await self.telegram.send_message(chat_id, f"Perintah `/oc {subcmd}` tidak dikenal. Ketik `/oc` untuk bantuan.")
+            await self.telegram.send_message(chat_id, L("oc.unknown", subcommand=subcmd))
 
     async def _run_sdlc_flow(self, chat_id: int, user_id: int, feature_description: str) -> None:
         """Run Multi-Agent SDLC sequence with live progress edits."""
-        status_msg_ids = await self.telegram.send_message(chat_id, "Starting Multi-Agent SDLC execution...")
+        lang = await self._get_user_language(user_id)
+        status_msg_ids = await self.telegram.send_message(chat_id, t("bot.sdlc.starting", lang))
         status_msg_id = status_msg_ids[0] if status_msg_ids else None
 
         async def update_progress(text: str, percentage: int):
@@ -954,16 +999,16 @@ class AgentOrchestrator:
                 user_id=user_id,
                 progress_callback=update_progress
             )
-            report = (
-                f"Multi-Agent SDLC Completed: {feature_description}\n\n"
-                f"--- 1. SPECIFICATION (Planner) ---\n{result.plan_output}\n\n"
-                f"--- 2. IMPLEMENTATION (Developer) ---\n{result.code_output}\n\n"
-                f"--- 3. VERIFICATION (QA) ---\n{result.qa_output}"
-            )
-            await self.telegram.send_message(chat_id, report)
+            await self.telegram.send_message(chat_id, t(
+                "bot.sdlc.report", lang,
+                feature=feature_description,
+                plan=result.plan_output,
+                code=result.code_output,
+                qa=result.qa_output,
+            ))
         except Exception as e:
             logger.error(f"SDLC Error: {str(e)}")
-            await self.telegram.send_message(chat_id, f"Multi-Agent SDLC Error: {str(e)}")
+            await self.telegram.send_message(chat_id, t("bot.sdlc.error", lang, error=str(e)))
 
     async def handle_callback_query(self, callback_data: Dict[str, Any]) -> None:
         """Handle inline button clicks for model selection, tool confirmations, and resets."""
@@ -978,41 +1023,47 @@ class AgentOrchestrator:
         if not user_id or not chat_id:
             return
 
+        lang = await self._get_user_language(user_id)
+
         if data_str.startswith("set_model:"):
             new_model = data_str.split(":", 1)[1]
             await self._set_user_model(user_id, new_model)
-            await self.telegram.answer_callback_query(query_id, f"Model set to {new_model}")
-            await self.telegram.edit_message_text(chat_id, message_id, f"✓ Active model switched to: {new_model}\n(Kirim /reset jika ingin mengosongkan riwayat sesi model sebelumnya)")
+            await self.telegram.answer_callback_query(query_id, t("bot.callback.model_set", lang, model=new_model))
+            await self.telegram.edit_message_text(
+                chat_id, message_id, t("bot.callback.model_switched", lang, model=new_model)
+            )
 
         elif data_str == "reset_session":
             session_id = f"user_{user_id}_chat_{chat_id}"
             await self.db.clear_session(session_id)
-            await self.telegram.answer_callback_query(query_id, "Riwayat percakapan dibersihkan.")
-            await self.telegram.edit_message_text(chat_id, message_id, "✓ Riwayat percakapan berhasil dibersihkan untuk model baru.")
+            await self.telegram.answer_callback_query(query_id, t("bot.callback.history_cleared", lang))
+            await self.telegram.edit_message_text(chat_id, message_id, t("bot.callback.history_cleared_body", lang))
 
         elif data_str.startswith("confirm:"):
             action_id = data_str.split(":", 1)[1]
             pending = self._pending_actions.get(action_id)
 
             if not pending:
-                await self.telegram.answer_callback_query(query_id, "Action expired or already processed.")
+                await self.telegram.answer_callback_query(query_id, t("bot.confirm.expired", lang))
                 return
 
-            await self.telegram.answer_callback_query(query_id, "Action confirmed.")
-            await self.telegram.edit_message_text(chat_id, message_id, f"Executing confirmed action: {pending.description}...")
+            await self.telegram.answer_callback_query(query_id, t("bot.confirm.confirmed", lang))
+            await self.telegram.edit_message_text(
+                chat_id, message_id, t("bot.confirm.executing", lang, description=pending.description)
+            )
             del self._pending_actions[action_id]
 
             # Execute the confirmed tool
             res = await self.tools.execute(pending.tool_name, pending.arguments, user_id=user_id)
             clean_res = humanize_response(res.content)
-            await self.telegram.send_message(chat_id, f"Execution Result:\n{clean_res}")
+            await self.telegram.send_message(chat_id, t("bot.confirm.result", lang, content=clean_res))
 
         elif data_str.startswith("cancel:"):
             action_id = data_str.split(":", 1)[1]
             if action_id in self._pending_actions:
                 del self._pending_actions[action_id]
-            await self.telegram.answer_callback_query(query_id, "Action cancelled.")
-            await self.telegram.edit_message_text(chat_id, message_id, "Operation was cancelled.")
+            await self.telegram.answer_callback_query(query_id, t("bot.confirm.cancelled", lang))
+            await self.telegram.edit_message_text(chat_id, message_id, t("bot.confirm.cancelled_body", lang))
 
         elif data_str.startswith("ocstop:"):
             try:
@@ -1029,9 +1080,9 @@ class AgentOrchestrator:
                         await self.opencode_bridge.interrupt(sid)
                     except Exception:
                         pass
-                await self.telegram.answer_callback_query(query_id, "Dihentikan.")
+                await self.telegram.answer_callback_query(query_id, t("oc.stopped", lang))
                 if message_id:
-                    await self.telegram.edit_message_text(chat_id, message_id, "⏹️ Dihentikan.")
+                    await self.telegram.edit_message_text(chat_id, message_id, t("oc.stopped", lang))
             except Exception as e:
                 logger.error(f"Error handling ocstop callback: {e}")
 
@@ -1056,16 +1107,16 @@ class AgentOrchestrator:
                     await self.opencode_bridge.reply_permission(sid, reqid, reply)
                     await self.telegram.answer_callback_query(query_id, f"Permission: {reply}")
                     reply_labels = {
-                        "once": "✅ Disetujui (once)",
-                        "always": "✅ Selalu diizinkan",
-                        "reject": "🚫 Ditolak",
+                        "once": t("oc.permission_once", lang),
+                        "always": t("oc.permission_always", lang),
+                        "reject": t("oc.permission_reject", lang),
                     }
                     if message_id:
                         await self.telegram.edit_message_text(
                             chat_id, message_id, reply_labels.get(reply, reply)
                         )
                 else:
-                    await self.telegram.answer_callback_query(query_id, "Data callback tidak valid.")
+                    await self.telegram.answer_callback_query(query_id, t("oc.permission_invalid", lang))
             except Exception as e:
                 logger.error(f"Error handling ocperm callback: {e}")
 
@@ -1077,10 +1128,11 @@ class AgentOrchestrator:
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Execute ReAct loop or forward to an attached OpenCode terminal session."""
+        lang = await self._get_user_language(user_id)
         mirror = self._get_oc_mirror(user_id, chat_id)
         if mirror is not None:
             if mirror.is_running:
-                await self.telegram.send_message(chat_id, "⏳ Sesi OpenCode masih berjalan. Ketik /oc stop untuk menghentikannya.")
+                await self.telegram.send_message(chat_id, t("oc.busy", lang))
                 return
             asyncio.create_task(mirror.run_prompt(prompt_text))
             return
@@ -1097,16 +1149,16 @@ class AgentOrchestrator:
         persona_prompt = SUBAGENT_PERSONAS.get(cur_persona, self.config.agent.system_prompt)
 
         # Build dynamic system prompt with explicit active model engine context
-        memories = await self.db.get_memories(user_id)
         sys_prompt = (
             f"{persona_prompt}\n"
             f"Active Model: {cur_model}\n"
             f"Tone: Direct, authentic, no robotic preambles."
         )
-        if memories:
+        if self.config.storage.memory_enabled:
+            memories = await self.db.get_memories(user_id)
             clean_mems = [f"- {k}: {v}" for k, v in memories.items() if not k.startswith("_")]
             if clean_mems:
-                sys_prompt += f"\n\nKnown context about user:\n" + "\n".join(clean_mems)
+                sys_prompt += "\n\nKnown context about user:\n" + "\n".join(clean_mems)
 
         tool_defs = self.tools.list_definitions()
         max_turns = 5
@@ -1126,7 +1178,7 @@ class AgentOrchestrator:
                 ai_response = await active_ai.generate_response(req)
             except Exception as e:
                 logger.error(f"AI Provider error: {str(e)}")
-                await self.telegram.send_message(chat_id, f"AI Provider Error: {str(e)}")
+                await self.telegram.send_message(chat_id, t("bot.ai_error", lang, error=str(e)))
                 return
 
             # Case A: AI generated tool calls
@@ -1142,7 +1194,7 @@ class AgentOrchestrator:
                 tool_responses = []
                 for tc in ai_response.tool_calls:
                     # Check if tool is destructive or requires confirmation
-                    if self.tools.is_destructive(tc.name):
+                    if self.tools.needs_confirmation(tc.name):
                         action_id = str(uuid.uuid4())[:8]
                         action_desc = f"{tc.name}({json.dumps(tc.arguments)})"
                         pending = PendingConfirmation(
@@ -1150,23 +1202,23 @@ class AgentOrchestrator:
                             tool_name=tc.name,
                             arguments=tc.arguments,
                             risk_level="HIGH",
-                            description=action_desc
+                            description=action_desc,
+                            user_id=user_id,
                         )
                         self._pending_actions[action_id] = pending
 
                         markup = {
                             "inline_keyboard": [
                                 [
-                                    {"text": "Confirm", "callback_data": f"confirm:{action_id}"},
-                                    {"text": "Cancel", "callback_data": f"cancel:{action_id}"}
+                                    {"text": t("bot.confirm.confirm_button", lang), "callback_data": f"confirm:{action_id}"},
+                                    {"text": t("bot.confirm.cancel_button", lang), "callback_data": f"cancel:{action_id}"}
                                 ]
                             ]
                         }
-                        prompt_msg = (
-                            f"Agent requested a high-risk operation:\n\n"
-                            f"Tool: {tc.name}\n"
-                            f"Arguments: {json.dumps(tc.arguments, indent=2)}\n\n"
-                            "Do you want to proceed?"
+                        prompt_msg = t(
+                            "bot.confirm.prompt", lang,
+                            tool=tc.name,
+                            arguments=json.dumps(tc.arguments, indent=2),
                         )
                         await self.telegram.send_message(chat_id, prompt_msg, reply_markup=markup)
                         return
@@ -1215,11 +1267,11 @@ class AgentOrchestrator:
                 )
                 ai_res = await (await self._get_active_ai_provider(job.user_id)).generate_response(req)
                 content = humanize_response(ai_res.content or "No response generated.")
-                msg_text = f"🔔 **Scheduled AI Task Update:**\n\n{content}"
+                msg_text = t("bot.job.ai_update", await self._get_user_language(job.user_id), content=content)
                 await self.telegram.send_message(job.chat_id, msg_text)
             else:
                 # Plain reminder
-                msg_text = f"⏰ **Reminder:**\n{job.prompt}"
+                msg_text = t("bot.job.reminder", await self._get_user_language(job.user_id), prompt=job.prompt)
                 await self.telegram.send_message(job.chat_id, msg_text)
 
             # Record completion / recalculate next occurrence

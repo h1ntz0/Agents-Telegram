@@ -9,9 +9,38 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Callable, Coroutine, Dict, List, Optional, Set, Tuple, Union
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from src.infrastructure.database.sqlite_db import SqliteDatabase
 
 logger = logging.getLogger(__name__)
+
+UTC = timezone.utc
+
+
+def resolve_timezone(value: Any) -> Any:
+    """Return a tzinfo for an IANA name, falling back to UTC for anything unusable.
+
+    An unknown name is a user typo, not a crash: schedules keep working in UTC and the
+    problem is reported by `agent doctor`.
+    """
+    if value is None or value == "":
+        return UTC
+    if isinstance(value, timezone):
+        return value
+    if hasattr(value, "utcoffset") and hasattr(value, "tzname"):
+        return value
+    try:
+        return ZoneInfo(str(value))
+    except (ZoneInfoNotFoundError, ValueError, KeyError):
+        logger.warning(f"Unknown timezone '{value}'; falling back to UTC.")
+        return UTC
+
+
+def _as_utc(value: datetime) -> datetime:
+    """Return a timezone-aware UTC datetime, assuming UTC when naive."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 class JobType(str, Enum):
@@ -93,12 +122,17 @@ def _parse_cron_field(field_str: str, min_val: int, max_val: int) -> Set[int]:
     return result
 
 
-def compute_next_cron_run(cron_expr: str, base_dt: Optional[datetime] = None) -> datetime:
-    """Calculate the next occurrence of a standard 5-part cron expression."""
+def compute_next_cron_run(cron_expr: str, base_dt: Optional[datetime] = None, tz: Any = None) -> datetime:
+    """Calculate the next occurrence of a standard 5-part cron expression.
+
+    Cron fields are wall-clock values in `tz` (default UTC); the returned datetime is
+    always UTC so persistence and comparison stay timezone-independent.
+    """
+    tzinfo = resolve_timezone(tz)
     if base_dt is None:
-        base_dt = datetime.now(timezone.utc)
-    elif base_dt.tzinfo is None:
-        base_dt = base_dt.replace(tzinfo=timezone.utc)
+        base_dt = datetime.now(UTC)
+    base_dt = _as_utc(base_dt)
+    local_dt = base_dt.astimezone(tzinfo)
 
     parts = cron_expr.strip().split()
     if len(parts) != 5:
@@ -116,7 +150,7 @@ def compute_next_cron_run(cron_expr: str, base_dt: Optional[datetime] = None) ->
         else:
             dow_set.add(d - 1)
 
-    current = base_dt.replace(second=0, microsecond=0) + timedelta(minutes=1)
+    current = local_dt.replace(second=0, microsecond=0) + timedelta(minutes=1)
     for _ in range(525600):
         if current.month not in month_set:
             if current.month == 12:
@@ -134,7 +168,7 @@ def compute_next_cron_run(cron_expr: str, base_dt: Optional[datetime] = None) ->
             continue
 
         if current.minute in minute_set:
-            return current
+            return current.astimezone(UTC)
 
         current += timedelta(minutes=1)
 
@@ -165,12 +199,17 @@ def parse_relative_duration(duration_str: str) -> timedelta:
     raise ValueError(f"Unknown duration unit '{unit}' in '{duration_str}'")
 
 
-def parse_schedule_expression(schedule_input: str, base_dt: Optional[datetime] = None) -> Tuple[ScheduleType, datetime, str]:
-    """Parse relative duration, cron, or ISO timestamp."""
+def parse_schedule_expression(schedule_input: str, base_dt: Optional[datetime] = None, tz: Any = None) -> Tuple[ScheduleType, datetime, str]:
+    """Parse relative duration, cron, or ISO timestamp into a UTC datetime.
+
+    Wall-clock forms (cron fields, ``HH:MM``, a naive ISO timestamp) are interpreted in
+    `tz` so a user typing ``/remind 18:00`` gets 18:00 in their own timezone. Relative
+    durations (``10m``, ``every 2h``) are unaffected by timezone.
+    """
+    tzinfo = resolve_timezone(tz)
     if base_dt is None:
-        base_dt = datetime.now(timezone.utc)
-    elif base_dt.tzinfo is None:
-        base_dt = base_dt.replace(tzinfo=timezone.utc)
+        base_dt = datetime.now(UTC)
+    base_dt = _as_utc(base_dt)
 
     raw = schedule_input.strip()
 
@@ -178,7 +217,7 @@ def parse_schedule_expression(schedule_input: str, base_dt: Optional[datetime] =
     tokens = raw.split()
     if len(tokens) == 5 and all(any(c in t for c in "0123456789*,-/") for t in tokens):
         try:
-            next_dt = compute_next_cron_run(raw, base_dt)
+            next_dt = compute_next_cron_run(raw, base_dt, tz=tzinfo)
             return ScheduleType.CRON, next_dt, raw
         except Exception as e:
             raise ValueError(f"Invalid cron expression '{raw}': {str(e)}")
@@ -211,21 +250,26 @@ def parse_schedule_expression(schedule_input: str, base_dt: Optional[datetime] =
         try:
             parsed = datetime.strptime(raw, fmt)
             if parsed.tzinfo is None:
-                parsed = parsed.replace(tzinfo=timezone.utc)
-            return ScheduleType.ONCE, parsed, parsed.isoformat()
+                parsed = parsed.replace(tzinfo=tzinfo)
+            parsed_utc = parsed.astimezone(UTC)
+            return ScheduleType.ONCE, parsed_utc, parsed_utc.isoformat()
         except ValueError:
             continue
 
-    # 5. Check for clock time: 'HH:MM'
+    # 5. Check for clock time: 'HH:MM' - today in the configured timezone, or tomorrow if past
     time_match = re.match(r"^(\d{1,2}):(\d{2})(?::(\d{2}))?$", raw)
     if time_match:
         h = int(time_match.group(1))
         m = int(time_match.group(2))
         s = int(time_match.group(3) or 0)
-        target = base_dt.replace(hour=h, minute=m, second=s, microsecond=0)
-        if target <= base_dt:
+        if h > 23 or m > 59 or s > 59:
+            raise ValueError(f"'{raw}' is not a valid clock time")
+        local_now = base_dt.astimezone(tzinfo)
+        target = local_now.replace(hour=h, minute=m, second=s, microsecond=0)
+        if target <= local_now:
             target += timedelta(days=1)
-        return ScheduleType.ONCE, target, target.isoformat()
+        target_utc = target.astimezone(UTC)
+        return ScheduleType.ONCE, target_utc, target_utc.isoformat()
 
     raise ValueError(f"Unable to parse time expression '{schedule_input}'")
 
@@ -233,13 +277,24 @@ def parse_schedule_expression(schedule_input: str, base_dt: Optional[datetime] =
 class JobScheduler:
     """Async SQLite-backed persistent scheduler for managing one-off reminders and recurring cron jobs."""
 
-    def __init__(self, db: SqliteDatabase):
+    def __init__(self, db: SqliteDatabase, timezone: Any = "UTC"):
         self.db = db
+        self.tz = resolve_timezone(timezone)
 
     def parse_time_delta_or_iso(self, time_str: str, base_dt: Optional[datetime] = None) -> datetime:
-        """Parse natural language time expression or ISO format into future datetime."""
-        _, next_dt, _ = parse_schedule_expression(time_str, base_dt=base_dt)
+        """Parse natural language time expression or ISO format into a future UTC datetime."""
+        _, next_dt, _ = parse_schedule_expression(time_str, base_dt=base_dt, tz=self.tz)
         return next_dt
+
+    def localize(self, value: datetime) -> datetime:
+        """Convert a stored UTC datetime into the configured display timezone."""
+        return _as_utc(value).astimezone(self.tz)
+
+    def format_time(self, value: Optional[datetime]) -> str:
+        """Render a stored UTC datetime as a readable local timestamp with its offset."""
+        if value is None:
+            return "-"
+        return self.localize(value).strftime("%Y-%m-%d %H:%M:%S %z")
 
     async def schedule_job(
         self,
@@ -265,7 +320,7 @@ class JobScheduler:
             next_run = raw_expr if raw_expr.tzinfo else raw_expr.replace(tzinfo=timezone.utc)
             norm_value = next_run.isoformat()
         else:
-            sched_enum, next_run, norm_value = parse_schedule_expression(str(raw_expr), base_dt=now)
+            sched_enum, next_run, norm_value = parse_schedule_expression(str(raw_expr), base_dt=now, tz=self.tz)
             sched_type_val = sched_enum.value if schedule_type is None else (schedule_type.value if isinstance(schedule_type, Enum) else str(schedule_type))
 
         job_type_val = job_type.value if isinstance(job_type, Enum) else str(job_type)
@@ -434,7 +489,7 @@ class JobScheduler:
             )
             await self.db._db.commit()
         elif job.schedule_type == ScheduleType.CRON.value:
-            next_run = compute_next_cron_run(job.schedule_value, executed_at)
+            next_run = compute_next_cron_run(job.schedule_value, executed_at, tz=self.tz)
             await self.db._db.execute(
                 """
                 UPDATE scheduled_jobs

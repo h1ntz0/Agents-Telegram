@@ -1,15 +1,28 @@
+# Shipped defaults for the Telegram Agent.
+#
+# Precedence, highest first:
+#   1. process environment variables
+#   2. the .env file        (written by `agent setup`)
+#   3. config/config.yaml   (optional, your overrides - not created by default)
+#   4. this file
+#   5. pydantic field defaults in src/application/config_manager.py
+#
+# Edit this file only to change the defaults for every run on this machine.
+# To change a single deployment, use `agent setup` or edit .env instead.
+
 app:
+  # 'production' keeps logs at INFO; any other value defaults them to DEBUG.
   env: production
-  log_level: INFO
-  timezone: Asia/Jakarta
-  port: 8080
+  log_level: ""            # empty = derived from env
+  # IANA timezone used to interpret and display schedules (/remind, /schedule).
+  timezone: UTC
+  # Default UI language for the setup wizard and every bot reply: en or id.
+  ui_lang: en
 
 telegram:
   bot_token: ""
   allowed_users: []
-  admin_users: []
-  mode: polling
-  webhook_url: ""
+  admin_users: []          # users allowed to run /admin
   enable_private_chat: true
   enable_group_chat: false
 
@@ -20,6 +33,7 @@ ai:
   base_url: ""
   temperature: 0.2
   max_tokens: 2048
+  timeout_seconds: 60.0
   opencode_server_url: "http://127.0.0.1:4096"
 
 agent:
@@ -30,6 +44,17 @@ agent:
 tools:
   web_search:
     enabled: true
+  http_fetch:
+    enabled: true
+    timeout_seconds: 15.0
+  chart:
+    enabled: true
+  python_sandbox:
+    enabled: true
+    timeout_seconds: 5.0
+  weather:
+    enabled: true
+    timeout_seconds: 12.0
   github:
     enabled: true
     token: ""
@@ -37,19 +62,22 @@ tools:
     allow_write: false
   filesystem:
     enabled: true
+    # './data' is a sandbox; use '.' to give the agent the whole project directory.
     root_dir: "./data"
+    # false lets the agent write, edit and delete files inside root_dir.
     read_only: true
   shell:
     enabled: false
     allow_destructive: false
+    timeout_seconds: 30.0
   require_confirmation_for_destructive: true
 
 storage:
   memory_enabled: true
   provider: sqlite
   database_path: "data/agent.db"
+  # 0 = keep memories forever.
   retention_days: 0
 
 security:
   rate_limit_per_minute: 15
-  daily_budget_usd: 5.0

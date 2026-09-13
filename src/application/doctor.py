@@ -5,7 +5,9 @@ import platform
 import shutil
 import sys
 from typing import Dict, List, Tuple
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from src.application.config_manager import ConfigManager, RootConfig
+from src.application.provider_registry import ProviderCredentialsMissing, resolve_provider_credentials
 from src.infrastructure.ai.factory import create_ai_provider
 from src.infrastructure.database.sqlite_db import SqliteDatabase
 from src.infrastructure.telegram.adapter import TelegramAdapter
@@ -62,6 +64,29 @@ class SystemDoctor:
             results.append({"name": "Configuration Schema", "status": "FAIL", "detail": f"Config parsing error: {str(e)}"})
             return all_passed, results
 
+        # 3b. Inert keys - a typo in .env would otherwise fail silently.
+        unknown = self.config_manager.unknown_env_keys()
+        if unknown:
+            results.append({
+                "name": "Configuration Keys",
+                "status": "INFO",
+                "detail": f"Ignored (not read by the agent): {', '.join(unknown)}",
+            })
+        else:
+            results.append({"name": "Configuration Keys", "status": "PASS", "detail": "Every key in .env is recognised."})
+
+        # 3c. Timezone - an invalid name silently falls back to UTC and shifts every schedule.
+        tz_name = config.app.timezone or "UTC"
+        try:
+            ZoneInfo(tz_name)
+            results.append({"name": "Timezone", "status": "PASS", "detail": f"Schedules use {tz_name}."})
+        except (ZoneInfoNotFoundError, ValueError, KeyError):
+            all_passed = False
+            results.append({
+                "name": "Timezone",
+                "status": "FAIL",
+                "detail": f"'{tz_name}' is not a known IANA timezone. Reminders would fire in UTC. Try Asia/Jakarta or UTC.",
+            })
         # 4. GitIgnore Secret Protection
         if os.path.exists(".gitignore"):
             with open(".gitignore", "r", encoding="utf-8") as f:
@@ -109,34 +134,44 @@ class SystemDoctor:
                 })
 
         # 7. AI Provider Validation Check
-        if not config.ai.api_key and config.ai.provider != "ollama":
+        provider_name = config.ai.provider
+        api_key = config.ai.api_key
+        base_url = config.ai.base_url
+        model = config.ai.model
+        try:
+            cred = resolve_provider_credentials(provider_name, config)
+            api_key, base_url = cred.api_key, cred.base_url or base_url
+            if cred.model:
+                model = cred.model
+        except ProviderCredentialsMissing as e:
             all_passed = False
-            results.append({"name": "AI Provider", "status": "FAIL", "detail": f"API key for {config.ai.provider} is missing."})
-        else:
-            try:
-                ai_prov = create_ai_provider(
-                    provider_name=config.ai.provider,
-                    api_key=config.ai.api_key,
-                    model=config.ai.model,
-                    base_url=config.ai.base_url
-                )
-                is_valid = await ai_prov.validate_credentials()
-                if is_valid:
-                    results.append({
-                        "name": "AI Provider",
-                        "status": "PASS",
-                        "detail": f"{config.ai.provider.upper()} ({config.ai.model}) verified."
-                    })
-                else:
-                    all_passed = False
-                    results.append({
-                        "name": "AI Provider",
-                        "status": "FAIL",
-                        "detail": f"Could not authenticate with {config.ai.provider}. Please verify API key."
-                    })
-            except Exception as e:
+            results.append({"name": "AI Provider", "status": "FAIL", "detail": str(e)})
+            return all_passed, results
+
+        try:
+            ai_prov = create_ai_provider(
+                provider_name=provider_name,
+                api_key=api_key,
+                model=model,
+                base_url=base_url
+            )
+            is_valid = await ai_prov.validate_credentials()
+            if is_valid:
+                results.append({
+                    "name": "AI Provider",
+                    "status": "PASS",
+                    "detail": f"{provider_name.upper()} ({model}) verified."
+                })
+            else:
                 all_passed = False
-                results.append({"name": "AI Provider", "status": "FAIL", "detail": f"Provider check error: {str(e)}"})
+                results.append({
+                    "name": "AI Provider",
+                    "status": "FAIL",
+                    "detail": f"Could not authenticate with {provider_name}. Verify the API key and base URL."
+                })
+        except Exception as e:
+            all_passed = False
+            results.append({"name": "AI Provider", "status": "FAIL", "detail": f"Provider check error: {str(e)}"})
 
         # 8. OpenCode Bridge Status (Advisory / Optional)
         try:

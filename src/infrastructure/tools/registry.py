@@ -35,6 +35,16 @@ class ToolRegistry:
             or defn.requires_confirmation
         )
 
+    def needs_confirmation(self, name: str) -> bool:
+        """Whether a tool call must be approved by the user before it runs.
+
+        The `require_confirmation_for_destructive` setting wins over the tool's own
+        classification, so an operator who explicitly disables the gate is not asked again.
+        """
+        if not self.require_confirmation_for_destructive:
+            return False
+        return self.is_destructive(name)
+
     async def execute(self, name: str, arguments: Dict[str, Any], user_id: int) -> ToolResult:
         """Execute tool safely with exception capture."""
         tool = self.get(name)

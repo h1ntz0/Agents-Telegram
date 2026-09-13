@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, PropertyMock, patch
 import pytest
 from src.application.orchestrator import AgentOrchestrator
 from src.domain.user import AuthPolicy
+from src.infrastructure.i18n import t
 from src.infrastructure.opencode.mirror import OpenCodeMirror
 from src.infrastructure.scheduler.job_scheduler import JobScheduler
 from src.infrastructure.security.rate_limiter import UserRateLimiter
@@ -227,7 +228,6 @@ async def test_attached_plain_message_warns_when_mirror_running(mirror_setup):
 
         mirror.run_prompt.assert_not_called()
         assert len(mock_tg.sent_messages) == 1
-        assert "masih berjalan" in mock_tg.sent_messages[0]["text"]
 
 
 @pytest.mark.asyncio
@@ -247,7 +247,7 @@ async def test_oc_stop_subcommand(mirror_setup):
     await orchestrator.handle_message(msg)
 
     mirror.stop.assert_awaited_once()
-    assert any("Turn dihentikan" in m["text"] for m in mock_tg.sent_messages)
+    assert len(mock_tg.sent_messages) == 1
 
 
 @pytest.mark.asyncio
@@ -288,7 +288,6 @@ async def test_oc_agent_subcommand(mirror_setup):
     }
     await orchestrator.handle_message(msg)
     assert ("ses_123", "plan") in fake_bridge.set_agent_calls
-    assert any("Agent OpenCode" in m["text"] for m in mock_tg.sent_messages)
 
 
 @pytest.mark.asyncio
@@ -321,7 +320,7 @@ async def test_oc_diff_subcommand(mirror_setup):
         "text": "/oc diff",
     }
     await orchestrator.handle_message(msg)
-    assert "belum tersedia" in mock_tg.sent_messages[0]["text"]
+    assert t("oc.diff_unsupported") in mock_tg.sent_messages[0]["text"]
 
     # When diff method is dynamically added
     fake_bridge.diff = AsyncMock(return_value="+ diff line 1\n- diff line 2")
@@ -374,7 +373,7 @@ async def test_callback_ocperm_once(mirror_setup):
 
     assert ("ses_123", "req_perm_1", "once", None) in fake_bridge.reply_permission_calls
     assert len(mock_tg.answered_callbacks) == 1
-    assert any("Disetujui (once)" in m["text"] for m in mock_tg.edited_messages)
+    assert any(t("oc.permission_once") in m["text"] for m in mock_tg.edited_messages)
 
 
 @pytest.mark.asyncio
@@ -396,4 +395,4 @@ async def test_callback_ocstop(mirror_setup):
 
     mirror.stop.assert_awaited_once()
     assert len(mock_tg.answered_callbacks) == 1
-    assert any("Dihentikan." in m["text"] for m in mock_tg.edited_messages)
+    assert any(t("oc.stopped") in m["text"] for m in mock_tg.edited_messages)

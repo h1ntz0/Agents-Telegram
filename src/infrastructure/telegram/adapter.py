@@ -5,30 +5,44 @@ import logging
 from typing import Any, Callable, Coroutine, Dict, List, Optional, Tuple
 import httpx
 from src.domain.user import TelegramUser
+from src.infrastructure.i18n import t
 from src.infrastructure.telegram.formatter import markdown_to_telegram_html, split_message_chunks
 
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_BOT_COMMANDS: List[Dict[str, str]] = [
-    {"command": "start", "description": "Mulai & info bot"},
-    {"command": "model", "description": "Lihat atau ganti model AI aktif"},
-    {"command": "provider", "description": "Lihat atau ganti provider AI aktif (9router/openai/anthropic/...)"},
-    {"command": "agent", "description": "Ganti sub-agent persona (coder/qa/researcher)"},
-    {"command": "sdlc", "description": "Jalankan 4 tahap SDLC otomatis"},
-    {"command": "oc", "description": "Remote kontrol & mirror OpenCode (stop/model/agent/list/attach)"},
-    {"command": "schedule", "description": "Jadwalkan prompt AI / cron (e.g. /schedule every 1h Periksa bursa)"},
-    {"command": "remind", "description": "Setel pengingat waktu (e.g. /remind 10m Minum air)"},
-    {"command": "chart", "description": "Buat grafik visual & ASCII (e.g. /chart bar A,B,C 10,20,30)"},
-    {"command": "status", "description": "Status kesehatan & tools sistem"},
-    {"command": "settings", "description": "Lihat pengaturan & model aktif"},
-    {"command": "tools", "description": "Daftar tools yang tersedia"},
-    {"command": "memory", "description": "Lihat memori tersimpan"},
-    {"command": "reset", "description": "Bersihkan riwayat percakapan"},
-    {"command": "cancel", "description": "Batalkan aksi pending"},
-    {"command": "help", "description": "Panduan lengkap perintah bot"},
+# Slash commands advertised to Telegram's autocomplete menu, in menu order.
+BOT_COMMAND_KEYS: List[Tuple[str, str]] = [
+    ("start", "cmd.description.start"),
+    ("model", "cmd.description.model"),
+    ("provider", "cmd.description.provider"),
+    ("agent", "cmd.description.agent"),
+    ("sdlc", "cmd.description.sdlc"),
+    ("oc", "cmd.description.oc"),
+    ("schedule", "cmd.description.schedule"),
+    ("remind", "cmd.description.remind"),
+    ("chart", "cmd.description.chart"),
+    ("status", "cmd.description.status"),
+    ("settings", "cmd.description.settings"),
+    ("tools", "cmd.description.tools"),
+    ("memory", "cmd.description.memory"),
+    ("lang", "cmd.description.lang"),
+    ("reset", "cmd.description.reset"),
+    ("cancel", "cmd.description.cancel"),
+    ("help", "cmd.description.help"),
 ]
 
+
+def build_bot_commands(lang: str = "") -> List[Dict[str, str]]:
+    """Return the setMyCommands payload for a language, defaulting to the active one."""
+    return [
+        {"command": command, "description": t(key, lang or None)}
+        for command, key in BOT_COMMAND_KEYS
+    ]
+
+
+# Backwards-compatible alias: the command set for the process default language.
+DEFAULT_BOT_COMMANDS: List[Dict[str, str]] = build_bot_commands()
 
 
 class TelegramAdapter:
@@ -46,7 +60,7 @@ class TelegramAdapter:
     async def set_my_commands(self, commands: Optional[List[Dict[str, str]]] = None) -> bool:
         """Register slash commands with Telegram so users get autocomplete and menu popup."""
         url = f"{self.base_url}/setMyCommands"
-        payload = {"commands": commands or DEFAULT_BOT_COMMANDS}
+        payload = {"commands": commands or build_bot_commands()}
         client = await self._get_client()
         try:
             res = await client.post(url, json=payload)
