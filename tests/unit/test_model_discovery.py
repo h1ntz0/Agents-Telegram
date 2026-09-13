@@ -91,7 +91,7 @@ def test_normalize_base_url():
     assert normalize_base_url("https://api.deepseek.com/v1/") == "https://api.deepseek.com/v1"
     assert normalize_base_url("localhost:20128/v1") == "http://localhost:20128/v1"
     assert normalize_base_url("127.0.0.1:20128/v1") == "http://127.0.0.1:20128/v1"
-    assert normalize_base_url("sk-REVOKED-NINE-ROUTER-KEY-0001") is None
+    assert normalize_base_url("sk-test-placeholder-000000000000000000") is None
     assert normalize_base_url("") is None
     assert normalize_base_url("not a url") is None
     assert normalize_base_url("ftp://example.com") is None
@@ -116,7 +116,7 @@ async def test_api_key_as_base_url_does_not_break_discovery():
         models, live_ok = await fetch_available_models_ex(
             provider_name="9router",
             api_key="123456",
-            base_url="sk-REVOKED-NINE-ROUTER-KEY-0001",
+            base_url="sk-test-placeholder-000000000000000000",
         )
 
     called_url = mock_get.call_args[0][0]
