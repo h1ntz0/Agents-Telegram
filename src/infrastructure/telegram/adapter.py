@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_BOT_COMMANDS: List[Dict[str, str]] = [
     {"command": "start", "description": "Mulai & info bot"},
     {"command": "model", "description": "Lihat atau ganti model AI aktif"},
+    {"command": "provider", "description": "Lihat atau ganti provider AI aktif (9router/openai/anthropic/...)"},
     {"command": "agent", "description": "Ganti sub-agent persona (coder/qa/researcher)"},
     {"command": "sdlc", "description": "Jalankan 4 tahap SDLC otomatis"},
     {"command": "oc", "description": "Remote kontrol & mirror OpenCode (stop/model/agent/list/attach)"},

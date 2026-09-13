@@ -152,6 +152,46 @@ PROVIDER_MODELS_CATALOG: Dict[str, List[str]] = {
 }
 
 
+# Canonical provider identifiers, in the order used by the /provider listing.
+CANONICAL_PROVIDERS: List[str] = [
+    "9router",
+    "deepseek",
+    "anthropic",
+    "google",
+    "openai",
+    "openrouter",
+    "ollama",
+    "opencode-zen",
+    "opencode-go",
+    "custom",
+]
+
+# Providers that need no API key (local or keyless endpoints).
+KEYLESS_PROVIDERS: set = {"ollama"}
+
+# Alias -> canonical provider id.
+PROVIDER_ALIASES: Dict[str, str] = {
+    "9_router": "9router",
+    "nine_router": "9router",
+    "nine-router": "9router",
+    "claude": "anthropic",
+    "claude_code": "anthropic",
+    "zen": "opencode-zen",
+    "opencode zen": "opencode-zen",
+    "opencode_zen": "opencode-zen",
+    "go": "opencode-go",
+    "opencode go": "opencode-go",
+    "opencode_go": "opencode-go",
+    "opencode": "opencode-zen",
+}
+
+
+def normalize_provider_name(name: str) -> str:
+    """Return the canonical provider id for a user-supplied name (aliases resolved)."""
+    cleaned = (name or "").lower().strip()
+    return PROVIDER_ALIASES.get(cleaned, cleaned)
+
+
 @dataclass
 class CompletionRequest:
     messages: List[Message]

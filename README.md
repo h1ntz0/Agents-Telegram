@@ -110,6 +110,7 @@ Slash commands auto-register with Telegram on startup for instant autocomplete m
 | :--- | :--- | :--- | :--- |
 | `/start` | — | Initialize session and view bot runtime status | `/start` |
 | `/model` | `[model_name]` | Open interactive model picker or switch model directly | `/model ds/deepseek-v4-flash` |
+| `/provider` | `[name]` | List providers or switch the active AI provider live (persisted per user) | `/provider anthropic` |
 | `/agent` | `[persona]` | Switch sub-agent persona (`orchestrator`, `coder`, `researcher`, `qa`) | `/agent coder` |
 | `/sdlc` | `<task>` | Run 4-stage autonomous development lifecycle | `/sdlc Build JWT auth middleware in Python` |
 | `/schedule` | `<cron> <prompt>` | Schedule recurring proactive task or alert | `/schedule 0 9 * * * Morning summary of tech news` |
@@ -122,6 +123,19 @@ Slash commands auto-register with Telegram on startup for instant autocomplete m
 | `/cancel` | — | Abort pending high-risk action or scheduled prompt | `/cancel` |
 | `/oc` | `[list\|attach\|detach\|new\|send\|stop\|model\|agent\|agents\|models\|commands\|skills\|diff]` | Mirror and control local OpenCode session (stream, switch model/agent, approve permissions) | `/oc attach ses_123` |
 | `/help` | — | Display complete command reference | `/help` |
+
+---
+
+## 🔀 Runtime Provider Switching
+
+Switch the active AI provider **live from Telegram** — no `.env` edit, no restart:
+
+| Command | Description |
+| :--- | :--- |
+| `/provider` | List every provider and mark the active one with `✅` (plus `configured` / `no credentials`) |
+| `/provider <name>` | Switch the active provider for your user; the choice is persisted across restarts |
+
+Add credentials for any additional provider in `.env` (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`, `OLLAMA_BASE_URL`, `NINE_ROUTER_API_KEY`, …). Providers without credentials are listed as `no credentials` and cannot be selected. Each provider keeps its **own active model**, so switching never leaks a model from another provider.
 
 ---
 

@@ -16,7 +16,14 @@ from src.infrastructure.opencode.bridge import OpenCodeBridge, OpenCodeError
 from src.infrastructure.opencode.mirror import OpenCodeMirror
 from src.application.multiagent_sdlc import MultiAgentSDLC
 from src.domain.agent import AgentState, Message, PendingConfirmation, Role, Session, ToolCall, ToolResponse
-from src.domain.provider import AIProvider, CompletionRequest, PROVIDER_MODELS_CATALOG
+from src.domain.provider import AIProvider, CompletionRequest, PROVIDER_MODELS_CATALOG, normalize_provider_name
+from src.application.provider_registry import (
+    ProviderCredentialsMissing,
+    build_provider,
+    list_provider_names,
+    provider_is_configured,
+    resolve_provider_credentials,
+)
 from src.infrastructure.ai.model_discovery import fetch_available_models
 from src.infrastructure.database.sqlite_db import SqliteDatabase
 from src.infrastructure.scheduler.job_scheduler import JobScheduler, ScheduledJob
@@ -59,10 +66,13 @@ class AgentOrchestrator:
         self.auth = auth_manager
         self.rate_limiter = rate_limiter
         self.scheduler = scheduler or JobScheduler(db=db)
-        self.sdlc = MultiAgentSDLC(ai_provider=ai_provider, tool_registry=tool_registry)
         self._pending_actions: Dict[str, PendingConfirmation] = {}
         self._user_active_persona: Dict[int, str] = {}
         self._user_active_model: Dict[int, str] = {}
+        self._user_active_provider: Dict[int, str] = {}
+        self._provider_cache: Dict[str, AIProvider] = {
+            normalize_provider_name(config.ai.provider): ai_provider
+        }
         self._user_active_oc_session: Dict[int, str] = {}
         self._oc_mirrors: Dict[int, OpenCodeMirror] = {}
         self.opencode_bridge = OpenCodeBridge(
@@ -90,24 +100,57 @@ class AgentOrchestrator:
         self._oc_mirrors[user_id] = mirror
         return mirror
 
+    async def _get_user_provider(self, user_id: int) -> str:
+        """Return the user's active provider id (cache -> SQLite -> configured default)."""
+        if user_id in self._user_active_provider:
+            return self._user_active_provider[user_id]
+        memories = await self.db.get_memories(user_id)
+        saved = memories.get("_active_provider")
+        provider_name = normalize_provider_name(saved or self.config.ai.provider)
+        self._user_active_provider[user_id] = provider_name
+        return provider_name
+
+    async def _set_user_provider(self, user_id: int, provider_name: str) -> None:
+        """Persist the user's active provider so it survives restarts."""
+        canonical = normalize_provider_name(provider_name)
+        self._user_active_provider[user_id] = canonical
+        await self.db.set_memory(user_id, "_active_provider", canonical)
+
+    async def _get_active_ai_provider(self, user_id: int) -> AIProvider:
+        """Return a cached AIProvider for the user's active provider (built on first use)."""
+        provider_name = await self._get_user_provider(user_id)
+        if provider_name not in self._provider_cache:
+            self._provider_cache[provider_name] = build_provider(provider_name, self.config)
+        return self._provider_cache[provider_name]
+
     async def _get_user_model(self, user_id: int) -> str:
-        """Retrieve user's chosen model from runtime cache or SQLite persistence."""
-        if user_id in self._user_active_model:
-            return self._user_active_model[user_id]
+        """Retrieve the model for the user's ACTIVE provider (per-provider isolation)."""
+        provider_name = await self._get_user_provider(user_id)
+        cache_key = f"{user_id}:{provider_name}"
+        if cache_key in self._user_active_model:
+            return self._user_active_model[cache_key]
 
         memories = await self.db.get_memories(user_id)
-        saved_model = memories.get("_active_model")
+        saved_model = memories.get(f"_active_model:{provider_name}")
         if saved_model:
-            self._user_active_model[user_id] = saved_model
+            self._user_active_model[cache_key] = saved_model
             return saved_model
 
-        return self.config.ai.model
+        try:
+            cred = resolve_provider_credentials(provider_name, self.config)
+            if cred.model:
+                return cred.model
+        except ProviderCredentialsMissing:
+            pass
+        catalog = PROVIDER_MODELS_CATALOG.get(provider_name) or []
+        return (catalog[0] if catalog else "") or self.config.ai.model
 
     async def _set_user_model(self, user_id: int, model_name: str) -> None:
-        """Update user's chosen model in runtime cache and SQLite persistence."""
+        """Persist the model under the user's active provider (per-provider isolation)."""
+        provider_name = await self._get_user_provider(user_id)
         clean_name = model_name.strip()
-        self._user_active_model[user_id] = clean_name
-        await self.db.set_memory(user_id, "_active_model", clean_name)
+        self._user_active_model[f"{user_id}:{provider_name}"] = clean_name
+        await self.db.set_memory(user_id, f"_active_model:{provider_name}", clean_name)
 
     async def _transcribe_audio(self, audio_bytes: bytes, filename: str = "voice.ogg") -> Optional[str]:
         """Attempt speech-to-text transcription via OpenAI-compatible whisper endpoint."""
@@ -262,7 +305,7 @@ class AgentOrchestrator:
 
         active_model = await self._get_user_model(user_id)
         active_persona = self._user_active_persona.get(user_id, "orchestrator")
-        provider_name = self.config.ai.provider.lower()
+        provider_name = await self._get_user_provider(user_id)
 
         if cmd == "/start":
             msg = (
@@ -273,6 +316,7 @@ class AgentOrchestrator:
                 f"Active Persona: {active_persona.upper()}\n\n"
                 "Commands:\n"
                 "/model - View or change active AI model\n"
+                "/provider - View or change active AI provider\n"
                 "/agent - Switch sub-agent persona\n"
                 "/schedule <time/cron> <prompt> - Schedule proactive AI job\n"
                 "/remind <time> <text> - Set a reminder\n"
@@ -288,6 +332,7 @@ class AgentOrchestrator:
             help_text = (
                 "Available Commands:\n"
                 "/model [name] - View or switch active AI model\n"
+                "/provider [name] - View or switch the active AI provider\n"
                 "/agent [orchestrator|researcher|coder|qa] - Switch sub-agent persona\n"
                 "/schedule <time/cron> <prompt> - Schedule proactive AI job\n"
                 "  • Examples: `/schedule every 1h Periksa berita terkini`\n"
@@ -322,11 +367,16 @@ class AgentOrchestrator:
                 )
                 return
 
-            # Dynamically discover live models for the active provider
+            # Dynamically discover live models for the ACTIVE provider using its own credentials
+            try:
+                active_cred = resolve_provider_credentials(provider_name, self.config)
+                cred_key, cred_url = active_cred.api_key, active_cred.base_url
+            except ProviderCredentialsMissing:
+                cred_key, cred_url = "", ""
             catalog_models = await fetch_available_models(
                 provider_name=provider_name,
-                api_key=self.config.ai.api_key,
-                base_url=self.config.ai.base_url
+                api_key=cred_key,
+                base_url=cred_url,
             )
             if not catalog_models:
                 catalog_models = PROVIDER_MODELS_CATALOG.get(provider_name, [])
@@ -345,6 +395,41 @@ class AgentOrchestrator:
                 "Contoh: /model ds/deepseek-v4-flash"
             )
             await self.telegram.send_message(chat_id, msg, reply_markup=markup)
+
+        elif cmd == "/provider":
+            if not args:
+                lines = ["Available AI Providers:\n"]
+                for name in list_provider_names():
+                    marker = "\u2705" if name == provider_name else "\u2022"
+                    status = "configured" if provider_is_configured(name, self.config) else "no credentials"
+                    lines.append(f"{marker} {name} ({status})")
+                lines.append("\nSwitch with: /provider <name>")
+                lines.append("Add credentials in .env (e.g. OPENAI_API_KEY) to enable more providers.")
+                await self.telegram.send_message(chat_id, "\n".join(lines))
+                return
+
+            requested = normalize_provider_name(args)
+            if requested not in list_provider_names():
+                await self.telegram.send_message(
+                    chat_id,
+                    f"Unknown provider '{args}'. Options: {', '.join(list_provider_names())}",
+                )
+                return
+            try:
+                resolve_provider_credentials(requested, self.config)
+            except ProviderCredentialsMissing as e:
+                await self.telegram.send_message(chat_id, f"\u26a0\ufe0f {e}")
+                return
+
+            await self._set_user_provider(user_id, requested)
+            self._provider_cache.pop(requested, None)
+            active_model = await self._get_user_model(user_id)
+            await self.telegram.send_message(
+                chat_id,
+                f"\u2713 Active provider switched to: {requested.upper()}\n"
+                f"Active Model: {active_model}\n\n"
+                "Tip: /reset to clear conversation history carried over from the previous provider.",
+            )
 
         elif cmd == "/agent":
             if not args:
@@ -862,7 +947,9 @@ class AgentOrchestrator:
                 await self.telegram.edit_message_text(chat_id, status_msg_id, text)
 
         try:
-            result = await self.sdlc.execute_feature_lifecycle(
+            active_ai = await self._get_active_ai_provider(user_id)
+            sdlc = MultiAgentSDLC(ai_provider=active_ai, tool_registry=self.tools)
+            result = await sdlc.execute_feature_lifecycle(
                 feature_description=feature_description,
                 user_id=user_id,
                 progress_callback=update_progress
@@ -1023,6 +1110,7 @@ class AgentOrchestrator:
 
         tool_defs = self.tools.list_definitions()
         max_turns = 5
+        active_ai = await self._get_active_ai_provider(user_id)
 
         for _ in range(max_turns):
             req = CompletionRequest(
@@ -1035,7 +1123,7 @@ class AgentOrchestrator:
             )
 
             try:
-                ai_response = await self.ai.generate_response(req)
+                ai_response = await active_ai.generate_response(req)
             except Exception as e:
                 logger.error(f"AI Provider error: {str(e)}")
                 await self.telegram.send_message(chat_id, f"AI Provider Error: {str(e)}")
@@ -1125,7 +1213,7 @@ class AgentOrchestrator:
                     temperature=self.config.ai.temperature,
                     max_tokens=self.config.ai.max_tokens,
                 )
-                ai_res = await self.ai.generate_response(req)
+                ai_res = await (await self._get_active_ai_provider(job.user_id)).generate_response(req)
                 content = humanize_response(ai_res.content or "No response generated.")
                 msg_text = f"🔔 **Scheduled AI Task Update:**\n\n{content}"
                 await self.telegram.send_message(job.chat_id, msg_text)

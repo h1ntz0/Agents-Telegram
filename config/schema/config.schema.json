@@ -28,14 +28,26 @@
     },
     "ai": {
       "type": "object",
-      "required": ["provider", "api_key", "model"],
+      "required": ["provider", "model"],
       "properties": {
-        "provider": { "type": "string", "enum": ["openai", "anthropic", "google", "openrouter", "ollama", "custom"] },
+        "provider": { "type": "string", "enum": ["9router", "deepseek", "anthropic", "google", "openai", "openrouter", "ollama", "opencode-zen", "opencode-go", "opencode", "custom"] },
         "api_key": { "type": "string" },
         "model": { "type": "string" },
         "base_url": { "type": "string", "default": "" },
         "temperature": { "type": "number", "minimum": 0.0, "maximum": 2.0, "default": 0.2 },
         "max_tokens": { "type": "integer", "default": 2048 }
+      }
+    },
+    "providers": {
+      "type": "object",
+      "description": "Optional per-provider credentials enabling runtime /provider switching.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "api_key": { "type": "string" },
+          "base_url": { "type": "string" },
+          "model": { "type": "string" }
+        }
       }
     },
     "agent": {

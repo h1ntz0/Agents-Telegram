@@ -162,4 +162,4 @@ async def test_switch_model_command_and_callback(temp_db, mock_config):
         "from": {"id": 111, "username": "user1"}
     })
     assert "switched to: ag/gemini-3.7-flash-high" in mock_tg.sent_messages[1]["text"]
-    assert orchestrator._user_active_model[111] == "ag/gemini-3.7-flash-high"
+    assert await orchestrator._get_user_model(111) == "ag/gemini-3.7-flash-high"

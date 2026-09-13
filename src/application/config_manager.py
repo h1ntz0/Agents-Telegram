@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 import yaml
 from dotenv import dotenv_values
 from pydantic import BaseModel, Field
+from src.domain.provider import normalize_provider_name
 
 
 class AppSettings(BaseModel):
@@ -36,7 +37,6 @@ class AISettings(BaseModel):
     max_tokens: int = 2048
     timeout_seconds: float = 60.0
     opencode_server_url: str = "http://127.0.0.1:4096"
-    timeout_seconds: float = 60.0
 
 
 class AgentSettings(BaseModel):
@@ -111,6 +111,30 @@ class SecuritySettings(BaseModel):
     daily_budget_usd: float = 5.0
 
 
+class ProviderCredential(BaseModel):
+    """Per-provider credentials so a user can switch providers at runtime."""
+
+    api_key: str = ""
+    base_url: str = ""
+    model: str = ""
+
+
+# Canonical provider id -> env var prefix for per-provider credentials.
+# Explicit mapping (not upper()): a canonical id like '9router' starts with a digit.
+PROVIDER_ENV_PREFIX: Dict[str, str] = {
+    "9router": "NINE_ROUTER",
+    "deepseek": "DEEPSEEK",
+    "anthropic": "ANTHROPIC",
+    "google": "GOOGLE",
+    "openai": "OPENAI",
+    "openrouter": "OPENROUTER",
+    "ollama": "OLLAMA",
+    "opencode-zen": "OPENCODE_ZEN",
+    "opencode-go": "OPENCODE_GO",
+    "custom": "CUSTOM",
+}
+
+
 class RootConfig(BaseModel):
     app: AppSettings = Field(default_factory=AppSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
@@ -119,6 +143,7 @@ class RootConfig(BaseModel):
     tools: ToolsSettings = Field(default_factory=ToolsSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
     security: SecuritySettings = Field(default_factory=SecuritySettings)
+    providers: Dict[str, ProviderCredential] = Field(default_factory=dict)
 
 
 def parse_int_list(value: Optional[str]) -> List[int]:
@@ -202,6 +227,29 @@ class ConfigManager:
             opencode_server_url=get_val("OPENCODE_SERVER_URL", ai_dict.get("opencode_server_url", "http://127.0.0.1:4096")),
         )
 
+        # Per-provider credentials: {PREFIX}_API_KEY / _BASE_URL / _MODEL, plus the generic
+        # AI_* values seeded onto the default provider so runtime /provider switching has a
+        # single credential lookup path.
+        providers_cfg: Dict[str, ProviderCredential] = {}
+        for prov_id, prefix in PROVIDER_ENV_PREFIX.items():
+            p_key = get_val(f"{prefix}_API_KEY")
+            p_url = get_val(f"{prefix}_BASE_URL")
+            p_model = get_val(f"{prefix}_MODEL")
+            if p_key or p_url or p_model:
+                providers_cfg[prov_id] = ProviderCredential(
+                    api_key=p_key or "", base_url=p_url or "", model=p_model or ""
+                )
+
+        default_prov = normalize_provider_name(ai_cfg.provider)
+        seeded = providers_cfg.get(default_prov, ProviderCredential())
+        if ai_cfg.api_key and not seeded.api_key:
+            seeded.api_key = ai_cfg.api_key
+        if ai_cfg.base_url and not seeded.base_url:
+            seeded.base_url = ai_cfg.base_url
+        if ai_cfg.model and not seeded.model:
+            seeded.model = ai_cfg.model
+        providers_cfg[default_prov] = seeded
+
         agent_cfg = AgentSettings(
             name=get_val("AGENT_NAME", agent_dict.get("name", "Assistant")),
             personality=get_val("AGENT_PERSONALITY", agent_dict.get("personality", "Professional")),
@@ -275,6 +323,7 @@ class ConfigManager:
             tools=tools_cfg,
             storage=storage_cfg,
             security=sec_cfg,
+            providers=providers_cfg,
         )
 
     def save_env_file(self, env_dict: Dict[str, Any]) -> None:

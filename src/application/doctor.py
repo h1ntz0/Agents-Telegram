@@ -136,8 +136,6 @@ class SystemDoctor:
                     })
             except Exception as e:
                 all_passed = False
-            except Exception as e:
-                all_passed = False
                 results.append({"name": "AI Provider", "status": "FAIL", "detail": f"Provider check error: {str(e)}"})
 
         # 8. OpenCode Bridge Status (Advisory / Optional)
