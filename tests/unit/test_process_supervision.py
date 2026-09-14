@@ -8,6 +8,7 @@ non-destructive behaviour.
 import os
 import subprocess
 import sys
+import threading
 import time
 
 from src.interfaces.cli.main import (
@@ -71,16 +72,22 @@ def test_request_stop_drops_the_sentinel_and_the_process_exits_cleanly(tmp_path,
     monkeypatch.chdir(tmp_path)
     os.makedirs("data", exist_ok=True)
 
+    # The child stands in for the agent: it ignores SIGTERM, so the sentinel file is the
+    # only thing that can stop it -- which is the behaviour this test pins on every
+    # platform, not just the ones where request_stop cannot deliver a signal.
     script = (
-        "import os, time\n"
-        f"STOP = {STOP_FILE!r}\n"
+        "import os, signal, sys, time\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
         f"open({PID_FILE!r}, 'w').write(str(os.getpid()))\n"
-        "while not os.path.exists(STOP):\n"
+        f"while not os.path.exists({STOP_FILE!r}):\n"
         "    time.sleep(0.1)\n"
         f"os.remove({STOP_FILE!r})\n"
         f"os.remove({PID_FILE!r})\n"
     )
     child = subprocess.Popen([sys.executable, "-c", script])
+    # A real agent is reaped by its init parent. POSIX keeps an unreaped child alive as a
+    # zombie that `process_alive` still reports as running, so reap it in the background.
+    threading.Thread(target=child.wait, daemon=True).start()
     try:
         for _ in range(50):
             if os.path.exists(PID_FILE):
