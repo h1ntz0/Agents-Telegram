@@ -49,9 +49,33 @@ Rotating a compromised secret is immediate: revoke the key at your provider, gen
 new one, then re-run `python -m src setup` (or edit `.env` directly) and restart the
 agent.
 
+## If a Credential Ends Up in a Commit
+
+A token that reaches a public repository is public. Assume it has already been copied:
+bots scrape new commits, forks and mirrors within minutes.
+
+1. **Revoke before you clean up.** Rotate the credential at the source — BotFather
+   `/revoke` for a Telegram bot token, your provider's key dashboard for an API key.
+   Until a stolen bot token is revoked, whoever holds it can read the bot's update
+   stream and impersonate the bot, so also set `TELEGRAM_ALLOWED_USERS` to your own
+   user ID rather than leaving the allowlist empty.
+2. **Write the new value to `.env`** and restart the agent. Never reuse the leaked value.
+3. **Purge the history**, not just the current file:
+   ```bash
+   git filter-repo --replace-text replacements.txt   # "old-secret==>REDACTED"
+   git push --force origin main
+   ```
+   Rewriting history changes every commit hash; coordinate with anyone who has a clone.
+4. **Ask GitHub to drop the cached copies.** After a force push the old commits are
+   unreachable but still served by direct SHA URL for a while. Use GitHub's
+   "Sensitive data removal" contact form, quoting the affected commits.
+5. **Confirm the purge.** `gitleaks git --config .gitleaks.toml` must report no leaks
+   across the entire history, and `git log -S '<secret>' --all` must return nothing.
+
 ## Security Practices in this Codebase
 
-- **No Secrets in Logs**: All structured JSON logs run through an automated regex scrubber before output.
+- **No Secrets in Logs**: All structured JSON logs run through an automated regex scrubber before output. The scrubber matches credentials embedded in URLs (`https://api.telegram.org/bot<id>:<token>/getMe`), which is the shape `httpx` logs at INFO level.
+- **Automated Secret Scanning**: Every push, pull request and a weekly schedule run `gitleaks` over the entire git history (`.github/workflows/secret-scan.yml`), with rules for the Telegram bot token and 9router key formats in `.gitleaks.toml`. The same config backs the optional pre-commit hook, so a credential is caught before it is committed.
 - **SSRF Prevention**: All outbound HTTP fetch operations validate resolved IP addresses against loopback, private, and cloud metadata ranges.
 - **Strict Allowlist**: Telegram user IDs are validated on message ingress before any message processing or AI generation starts.
 - **Interactive Confirmations**: Tools with destructive capabilities (`rm`, `git push --force`, table drops) require explicit Telegram inline button confirmation.

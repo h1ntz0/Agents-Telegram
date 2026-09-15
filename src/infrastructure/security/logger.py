@@ -8,8 +8,13 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 
 SECRET_PATTERNS = [
-    # Telegram Bot Token (e.g., 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ)
-    re.compile(r"\b\d{8,11}:[A-Za-z0-9_-]{30,45}\b"),
+    # Telegram Bot Token (e.g., 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ).
+    # No \b anchor: Telegram API URLs glue the token straight onto "/bot", and
+    # both characters either side of that seam are word characters, so a word
+    # boundary never exists where the token starts. A \b there meant
+    # "GET https://api.telegram.org/bot<id>:<secret>/getMe" -- the exact shape
+    # httpx logs at INFO -- was written to stdout and log files unmasked.
+    re.compile(r"(?<!\d)\d{8,12}:[A-Za-z0-9_-]{30,45}"),
     # OpenAI API Key
     re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"),
     # Anthropic API Key

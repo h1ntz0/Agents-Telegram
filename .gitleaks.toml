@@ -1,0 +1,58 @@
+# Secret scanning configuration.
+#
+# Used by the pre-commit hook (.pre-commit-config.yaml), by CI
+# (.github/workflows/secret-scan.yml), and by hand:
+#
+#     gitleaks git --redact            # entire history
+#     gitleaks git --staged --redact   # staged changes only
+#     gitleaks dir . --redact          # the working tree as it stands
+#
+# The default ruleset ships with the tool; the rules below add the two credential
+# shapes this project actually uses.
+
+title = "telegram-agent"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "telegram-bot-token"
+description = "Telegram Bot API token: <bot id>:<secret>"
+# No left anchor: inside "https://api.telegram.org/bot<id>:<secret>/getMe" the token
+# is glued to the letters of "/bot", so a word boundary never occurs there. Lookbehind
+# is unavailable here -- gitleaks compiles rules with RE2, which has no lookarounds.
+regex = '''\d{8,12}:[A-Za-z0-9_-]{33,}'''
+keywords = ["api.telegram.org", "TELEGRAM_BOT_TOKEN", "bot_token"]
+
+[[rules.allowlists]]
+description = "Placeholder tokens used by the test suite"
+regexTarget = "secret"
+regexes = [
+  '''^1234567890:''',
+]
+
+[[rules]]
+id = "nine-router-api-key"
+description = "9router gateway API key: sk-<16 hex>-<6>-<8 hex>"
+regex = '''\bsk-[0-9a-f]{16}-[a-z0-9]{6}-[0-9a-f]{8}\b'''
+keywords = ["9router", "AI_API_KEY"]
+
+[[rules.allowlists]]
+description = "Obviously fake keys used in tests and documentation"
+regexTarget = "secret"
+regexes = [
+  '''(?i)^sk-(test|mock|fake|dummy|placeholder)''',
+  '''(?i)^sk-[a-z0-9-]*(test|mock|fake|dummy|placeholder)''',
+]
+
+# Values that exist only to exercise the masking code. They are checked against the
+# detected secret, so a real credential on a neighbouring line is still reported.
+[allowlist]
+description = "Fake credentials from the unit tests"
+regexTarget = "secret"
+regexes = [
+  '''^1234567890:[A-Za-z0-9_-]+$''',
+  '''^ghp_123456789012345678901234567890123456$''',
+  '''^sk-1234567890[a-f0-9]*$''',
+  '''^sk-test-placeholder-0+$''',
+]

@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **Telegram bot tokens are masked in logs again.** The masking pattern was anchored on
+  a word boundary, and inside `https://api.telegram.org/bot<id>:<token>/getMe` the token
+  starts right after the letters of `/bot` — no boundary exists there — so the full token
+  was written to stdout and to log files whenever `httpx` logged a request at INFO level.
+- **Automated secret scanning.** `gitleaks` now runs over the entire git history on every
+  push, every pull request and on a weekly schedule, with dedicated rules for the Telegram
+  bot token and 9router key formats (`.gitleaks.toml`, `.github/workflows/secret-scan.yml`).
+  An optional pre-commit hook (`.pre-commit-config.yaml`) catches a credential before it is
+  committed. Screen recordings are ignored by default, since a setup walkthrough films the
+  terminal.
+- `SECURITY.md` documents how to respond when a credential has been committed: revoke
+  first, then purge the history, then ask GitHub to drop the cached copies.
+
 ## [2.1.0] - 2026-09-13
 
 The adoption release: install, configure and run the agent with one command, from a

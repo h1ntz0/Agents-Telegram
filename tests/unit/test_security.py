@@ -2,7 +2,7 @@
 
 import logging
 import time
-from src.infrastructure.security.logger import mask_secrets
+from src.infrastructure.security.logger import SecretMaskingJsonFormatter, mask_secrets
 from src.infrastructure.security.prompt_guard import wrap_untrusted_content, sanitize_telegram_markdown
 from src.infrastructure.security.rate_limiter import UserRateLimiter
 from src.infrastructure.security.ssrf_guard import is_safe_url
@@ -74,3 +74,27 @@ def test_secret_masking_regex():
     assert "sk-1234567890abcdef1234567890abcdef" not in masked
     assert "ghp_123456789012345678901234567890123456" not in masked
     assert "[REDACTED_SECRET]" in masked
+
+
+def test_log_formatter_masks_token_inside_telegram_api_url():
+    """httpx logs the full request URL at INFO, token and all.
+
+    The token sits flush against "/bot", so both characters around the seam are
+    word characters; a \\b-anchored pattern never matched there and the token
+    reached stdout and the log file intact.
+    """
+    token = "1234567890:AAEeZ0_0Ag3wt3NWJU1S9wtk7ZCqshMeMFKE"
+    record = logging.LogRecord(
+        name="httpx",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg='HTTP Request: GET https://api.telegram.org/bot%s/getMe "HTTP/1.1 200 OK"' % token,
+        args=(),
+        exc_info=None,
+    )
+
+    formatted = SecretMaskingJsonFormatter().format(record)
+
+    assert token not in formatted
+    assert "[REDACTED_SECRET]" in formatted

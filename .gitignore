@@ -61,6 +61,13 @@ htmlcov/
 .ruff_cache/
 .mypy_cache/
 
+# Media recorded from a live session. A walkthrough of the setup wizard films the
+# terminal, and the terminal prints request URLs -- a recorded credential is a leaked
+# credential. Keep recordings and demo captures out of the repository.
+*.mp4
+*.mov
+*.webm
+
 # OS / IDE
 .DS_Store
 Thumbs.db
